@@ -42,8 +42,8 @@ Prerequisite: dsh CLI (or invoke `apps/cli/lib/bin.js` from the dsh install root
 dsh plugin --profile web add github:HubaKing/dsh-community-plugins
 
 # tarball (works offline)
-curl -LO https://github.com/HubaKing/dsh-community-plugins/releases/download/v0.1.1/dsh-community-plugins-0.1.1.tgz
-dsh plugin --profile web add ./dsh-community-plugins-0.1.1.tgz
+curl -LO https://github.com/HubaKing/dsh-community-plugins/releases/download/v0.1.2/dsh-community-plugins-0.1.2.tgz
+dsh plugin --profile web add ./dsh-community-plugins-0.1.2.tgz
 
 # source + link (development mode, edits take effect immediately)
 git clone https://github.com/HubaKing/dsh-community-plugins.git "${DSH_HOME:-~/.dsh}/plugins/dsh-community-plugins"
