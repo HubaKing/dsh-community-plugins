@@ -21,6 +21,8 @@ description: DeepSeek Harness 社区插件生态指南：发现社区插件（Gi
 
 ## 2. 查找社区插件
 
+先明确需求类别：**skill 类**（知识/流程）、**工具类**（模型工具/能力）、**UI 类**（Web 界面/皮肤）、**集成类**（外部服务/渠道）——分类搜索命中更准。
+
 按可靠性排序：
 
 1. **`market_search` 工具**（若 `dsh-plugin-marketplace` 已生效）：直接搜 GitHub `dsh-plugin` 话题，返回 JSON 列表（name/stars/language/description/url）。
@@ -39,6 +41,7 @@ description: DeepSeek Harness 社区插件生态指南：发现社区插件（Gi
 - `package.json` — 名称、`dsh.bundle` / `dsh.client` manifest、许可证（宽松：MIT/Apache/BSD；GPL/AGPL/未知许可证需提示）
 - `cordis.patch.yml` — 插入哪些行、注册什么
 - main 入口源码 — 是否执行网络请求/子进程等可疑行为
+- **活跃度** — stars 数量与最近提交时间（GitHub API 的 `pushed_at`）：停更超一年且 star 少的项目谨慎采用
 
 **危险信号清单**（任一命中 → 停下确认）：
 
@@ -53,7 +56,7 @@ description: DeepSeek Harness 社区插件生态指南：发现社区插件（Gi
 
 ## 4. 安装插件
 
-先**判断安装形态**（决定怎么挂载与是否需重启）：
+机制依据官方文档（[打包与安装插件](https://deepseek-harness.github.io/deepseek-harness/develop/basic/publish)、[生命周期](https://deepseek-harness.github.io/deepseek-harness/develop/framework/)）。先**判断安装形态**（决定怎么挂载与是否需重启）：
 
 1. **bundle 插件**（`package.json` 有 `dsh.bundle.patch`）→ `dsh plugin --profile web add <spec>` 自动进 `dsh.profile.bundles`；**装完需重启 dsh**（bundle 层启动时组合，HMR 不重载 bundle 层）。
 2. **client-only 插件**（只有 `dsh.client`，无 `dsh.bundle`）→ 不进 bundles；已装 dshmarket 时由其启动热挂载，否则需手动在 profile 配置后重启。
@@ -68,6 +71,8 @@ dsh plugin --profile web add <spec>
 ```
 
 **GitHub 直装与构建**：git 安装拉源码不跑构建。TypeScript 包需要 `prepare` 脚本 + pnpm `allowBuilds` 授权（用户必须显式允许，见官方文档）；纯 JS 零依赖包（如本插件）无需任何授权。
+
+**作用域**：skill 类插件可装在**全局**（`${DSH_HOME:-~/.dsh}/skills/`，所有会话可见）或**工作区**（`<工作区>/.dsh/skills/`，仅该项目会话可见）；`SKILL.md` 改名 `.disabled` 即停用，热生效。安装 `dsh plugin` 之外的纯 skill 包可直接复制到上述目录。
 
 ## 5. 安装本插件（首次使用）
 
