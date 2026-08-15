@@ -8,8 +8,6 @@
 
 **Looking for a DeepSeek Harness plugin to install?** This bundle adds the `dsh-community-plugins` skill to every agent session: agents learn which marketplace tools are already installed (`market_search`, dshmarket), how to search the `dsh-plugin` ecosystem, how to vet a plugin before installing it, and how to install via `dsh plugin` (npm, GitHub, tarball, or `link:` development mode).
 
-> ⚡ One-page command cheat sheet: [docs/quick-reference.md](docs/quick-reference.md)（一页速查表：[中文版](docs/quick-reference.md)）
-
 ## Why this plugin
 
 DeepSeek Harness plugins provide capabilities through two complementary mechanisms: **Tools** and **Skills**.
