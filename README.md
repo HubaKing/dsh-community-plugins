@@ -4,6 +4,23 @@
 >
 > A DeepSeek Harness bundle plugin that registers the `dsh-community-plugins` skill, teaching agents how to discover, vet, and install community plugins.
 
+## 为什么需要本插件
+
+DeepSeek Harness 的插件能力通过两类机制提供：**工具（Tools）** 与 **技能（Skills）**。两者互补，缺一不可：
+
+| | 工具（如 `market_search`） | 技能（本插件注册的 skill） |
+|---|---|---|
+| 本质 | 能力通道：可调用的函数 | 上下文知识：何时、为何、如何调用 |
+| 安装来源 | `dsh-plugin-marketplace` 等插件 | 本插件 |
+| 单独安装时的效果 | 工具存在，但 agent 不认识它 | 无法调用任何市场接口 |
+
+**仅安装市场工具是不够的。** LLM agent 的行为由上下文中的知识驱动：
+
+- `web_search` 描述直观，是模型的默认通用手段；
+- `market_search` 是 DSH 专属工具，agent 默认不知道它的存在、不觉得「安装插件」与其相关，也不了解本机 profile 结构、bundle 机制、评估流程与重启要求。
+
+没有本插件时，agent 只能退化为网页搜索碰运气。安装本插件后，每个新会话的 agent 自动获得完整知识：本机已装哪些市场与工具、优先走哪条结构化检索通道、如何评估来源、如何按官方机制安装、装完如何验证。实测中，同一环境在 skill 生效前依赖网页搜索，生效后首次响应即直接调用 `market_search` 并给出准确安装命令。
+
 ## 功能
 
 - 注册全局 skill：所有会话的 `<available_skills>` 目录自动出现 `dsh-community-plugins`
@@ -69,12 +86,32 @@ dsh-community-plugins/
 
 - [DeepSeek Harness 官方仓库](https://github.com/deepseek-ai/deepseek-harness)
 - [官方文档（简体中文）](https://deepseek-harness.github.io/deepseek-harness/)
+- [快速开始（Web UI）](https://deepseek-harness.github.io/deepseek-harness/guide/quickstart)
 - [第一个插件](https://deepseek-harness.github.io/deepseek-harness/develop/basic/) — 插件形态、`apply`/`inject`、生命周期
 - [打包与安装插件](https://deepseek-harness.github.io/deepseek-harness/develop/basic/publish) — bundle manifest、profile 安装、构建授权
 - [插件配置](https://deepseek-harness.github.io/deepseek-harness/develop/basic/config) — Config/Schema 约定
 - [插件与生命周期](https://deepseek-harness.github.io/deepseek-harness/develop/framework/) — Fiber 状态机与自动清理
 - [事件系统](https://deepseek-harness.github.io/deepseek-harness/develop/framework/events) — 事件模式与命名约定
+- [从源码运行（根 README）](https://github.com/deepseek-ai/deepseek-harness/blob/master/README.md#run-from-source) — 源码构建与启动
+- [源码执行（CLI 参考）](https://github.com/deepseek-ai/deepseek-harness/blob/master/apps/cli/reference/README.md#source-execution) — 构建与启动器行为
 - [GitHub `dsh-plugin` 话题](https://github.com/topics/dsh-plugin) — 社区插件聚合
+
+## 构建与发布
+
+本插件为纯 JavaScript、零依赖，无编译步骤，GitHub 直装与 tarball 均无需构建授权。
+
+```bash
+# 语法检查
+node --check index.js
+
+# 打包分发 tarball（pnpm pack）
+pnpm pack
+
+# 发布到 GitHub Release
+# 1. 更新 package.json 的 version
+# 2. 打 tag 并推送：git tag v<version> && git push origin v<version>
+# 3. 在 GitHub Releases 页面创建 Release 并上传 pnpm pack 生成的 tarball
+```
 
 ## License
 
