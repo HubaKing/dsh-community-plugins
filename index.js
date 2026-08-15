@@ -3,9 +3,9 @@
  * `skills/<name>/SKILL.md` bundle on `ctx.skills`, so every session on this
  * deployment sees the community-plugin guide (market discovery + install).
  *
- * Zero-dependency on purpose: frontmatter parsing is a tiny hand-rolled
- * parser for the `name`/`description` fields this bundle's own skills use,
- * so the package installs without pulling extra deps into the profile.
+ * Frontmatter is parsed with the same YAML library the official skill
+ * providers use (`yaml`), so this bundle's skills follow the official
+ * SKILL.md frontmatter format exactly.
  * @module dsh-community-plugins
  */
 
@@ -13,6 +13,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { parse as parseYaml } from 'yaml'
 /** Same rank as packaged dsh skill providers (`BUNDLED_SKILL_RANK` in `@deepseek-ai/dsh-skill`). */
 const BUNDLED_SKILL_RANK = 600
 const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
@@ -82,17 +83,18 @@ function loadSkillsSync() {
 
 /**
  * Parse one SKILL.md into the shape `ctx.skills` candidates and definitions
- * are projected from. Hand-rolled frontmatter: only the `name` and
- * `description` keys are read (plus optional `disable-model-invocation` and
- * `user-invocable` booleans); anything else is ignored.
+ * are projected from. Frontmatter is full YAML via the `yaml` library (same
+ * as the official skill providers); `name`/`description` are required, and
+ * `disable-model-invocation`/`user-invocable` control invocation policy.
  * @param {string} raw - the file contents.
  * @param {string} directory - the skill bundle directory, used as its resource base.
  * @param {string} skillFile - the absolute SKILL.md path.
  * @returns the parsed skill, or undefined when the file is not a skill bundle.
  */
 function parseSkill(raw, directory, skillFile) {
-  const data = parseFrontmatter(raw)
-  if (data === undefined) return undefined
+  const parsed = parseFrontmatter(raw)
+  if (parsed === undefined) return undefined
+  const data = parsed.data
   const skillName = stringField(data, 'name')
   const description = stringField(data, 'description')
   if (skillName === undefined || description === undefined) {
@@ -104,6 +106,7 @@ function parseSkill(raw, directory, skillFile) {
   return {
     name: skillName,
     description,
+    ...optionalMetadata(data),
     invocation: {
       modelInvocable: data['disable-model-invocation'] !== true,
       userInvocable: data['user-invocable'] !== false,
@@ -114,8 +117,17 @@ function parseSkill(raw, directory, skillFile) {
     rank: BUNDLED_SKILL_RANK,
     locator: skillFile,
     path: skillFile,
-    content: stripFrontmatter(raw).trim(),
+    content: parsed.body.trim(),
   }
+}
+
+/** Pass through an object-valued `metadata` frontmatter key, matching the official skill provider. */
+function optionalMetadata(data) {
+  const value = data.metadata
+  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    return { metadata: value }
+  }
+  return {}
 }
 
 function sortSkills(skills) {
@@ -133,6 +145,7 @@ function toCandidate(skill) {
   return {
     name: skill.name,
     description: skill.description,
+    ...skill.metadata !== undefined ? { metadata: skill.metadata } : {},
     invocation: skill.invocation,
     provider: skill.provider,
     source: skill.source,
@@ -147,6 +160,7 @@ function toDefinition(skill) {
   return {
     name: skill.name,
     description: skill.description,
+    ...skill.metadata !== undefined ? { metadata: skill.metadata } : {},
     invocation: skill.invocation,
     provider: skill.provider,
     source: skill.source,
@@ -157,52 +171,34 @@ function toDefinition(skill) {
 }
 
 /**
- * Split a leading `---` fenced block from the Markdown body and parse it as
- * flat `key: value` lines (no nested YAML). Unknown keys are kept verbatim
- * as strings/booleans when unambiguous.
+ * Split a leading `---` fenced YAML block from the Markdown body and parse it
+ * with the `yaml` library, matching the official skill provider behavior.
  * @param {string} raw
- * @returns {Record<string, unknown> | undefined}
+ * @returns {{ data: Record<string, unknown>, body: string } | undefined}
  */
 function parseFrontmatter(raw) {
   const firstLineEnd = raw.indexOf('\n')
   if (firstLineEnd < 0) return undefined
   if (raw.slice(0, firstLineEnd).replace(/\r$/, '') !== '---') return undefined
-  const body = stripFrontmatter(raw)
-  const closing = raw.length - body.length
-  const block = raw.slice(firstLineEnd + 1, closing)
-  const data = {}
-  for (const rawLine of block.split('\n')) {
-    const line = rawLine.replace(/\r$/, '')
-    const trimmed = line.trim()
-    if (trimmed === '' || trimmed === '---') continue
-    const colon = line.indexOf(':')
-    if (colon < 0) continue
-    const key = line.slice(0, colon).trim()
-    if (key === '') continue
-    const value = line.slice(colon + 1).trim()
-    if (value === 'true') data[key] = true
-    else if (value === 'false') data[key] = false
-    else data[key] = value
-  }
-  return data
+  const start = firstLineEnd + 1
+  const closing = findClosingFrontmatter(raw, start)
+  if (closing === undefined) return undefined
+  const parsed = parseYaml(raw.slice(start, closing.start))
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined
+  return { data: parsed, body: raw.slice(closing.bodyStart) }
 }
 
-/** Strip the leading `---` frontmatter block, returning the Markdown body. */
-function stripFrontmatter(raw) {
-  const firstLineEnd = raw.indexOf('\n')
-  if (firstLineEnd < 0) return raw
-  if (raw.slice(0, firstLineEnd).replace(/\r$/, '') !== '---') return raw
-  let lineStart = firstLineEnd + 1
+function findClosingFrontmatter(raw, start) {
+  let lineStart = start
   while (lineStart <= raw.length) {
     const nextNewline = raw.indexOf('\n', lineStart)
     const lineEnd = nextNewline < 0 ? raw.length : nextNewline
     if (raw.slice(lineStart, lineEnd).replace(/\r$/, '') === '---') {
-      return nextNewline < 0 ? '' : raw.slice(nextNewline + 1)
+      return { start: lineStart, bodyStart: nextNewline < 0 ? raw.length : nextNewline + 1 }
     }
-    if (nextNewline < 0) return ''
+    if (nextNewline < 0) return undefined
     lineStart = nextNewline + 1
   }
-  return raw
 }
 
 function stringField(data, key) {
