@@ -115,12 +115,25 @@ node --check index.js
 
 # 打包分发 tarball（pnpm pack）
 pnpm pack
-
-# 发布到 GitHub Release
-# 1. 更新 package.json 的 version
-# 2. 打 tag 并推送：git tag v<version> && git push origin v<version>
-# 3. 在 GitHub Releases 页面创建 Release 并上传 pnpm pack 生成的 tarball
 ```
+
+**GitHub 发布（自动）**：推送 `v*` tag 即触发 CI——语法检查、`pnpm pack`、自动创建 Release 并附带 tarball。
+
+```bash
+git tag v<version> && git push origin v<version>   # GitHub：CI 自动建 Release
+```
+
+**Gitee 发布（手动）**：Gitee 无 Actions 流水线，Release 需手动创建。先推送 tag，再到网页发布：
+
+```bash
+git push gitee v<version>                          # Gitee：先推送 tag
+```
+
+1. 打开 https://gitee.com/HubaKing/dsh-community-plugins/releases →「新建发行版」
+2. 选择已推送的 tag，填写标题/说明（可复用 GitHub 的说明），附件上传 `pnpm pack` 生成的 tarball
+3. 发布——下载地址形如 `https://gitee.com/HubaKing/dsh-community-plugins/releases/download/<tag>/dsh-community-plugins-<version>.tgz`
+
+> 注意：两个平台相互独立——GitHub Release 与 Gitee Release 需分别发布。GitHub 由 CI 自动同步 tarball；Gitee 每个版本需手动上传一次。
 
 ## License
 

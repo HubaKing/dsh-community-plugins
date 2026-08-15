@@ -117,12 +117,25 @@ node --check index.js
 
 # Package a distribution tarball (pnpm pack)
 pnpm pack
-
-# Release to GitHub Releases
-# 1. Bump the version in package.json
-# 2. Tag and push: git tag v<version> && git push origin v<version>
-# 3. Create a Release on the GitHub Releases page and upload the tarball from pnpm pack
 ```
+
+**Release flow (GitHub, automated):** pushing a `v*` tag triggers the CI workflow — syntax check, `pnpm pack`, automatic Release creation with the tarball attached.
+
+```bash
+git tag v<version> && git push origin v<version>   # GitHub: CI creates the Release automatically
+```
+
+**Release flow (Gitee, manual):** Gitee has no Actions pipeline, so Releases are created by hand. Push the tag first, then publish on the Gitee web UI:
+
+```bash
+git push gitee v<version>                          # Gitee: push the tag first
+```
+
+1. Open https://gitee.com/HubaKing/dsh-community-plugins/releases → 「新建发行版」
+2. Choose the pushed tag, fill in the title/notes (reuse the GitHub notes), and attach the tarball from `pnpm pack`
+3. Publish — the download URL becomes `https://gitee.com/HubaKing/dsh-community-plugins/releases/download/<tag>/dsh-community-plugins-<version>.tgz`
+
+> Note: the two platforms are independent — GitHub Releases and Gitee Releases must be published separately. GitHub keeps the tarball in sync via CI; Gitee needs a manual upload per version.
 
 ## License
 
