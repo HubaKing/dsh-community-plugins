@@ -1,0 +1,7 @@
+# dsh-community-plugins bundle: registers the packaged `skills/<name>/SKILL.md`
+# bundle on ctx.skills, so every session on this deployment sees the community
+# plugin guide. Applied after @deepseek-ai/dsh-base, which already mounts the
+# skill registry and the model-facing skill loader.
+- insert:
+    - id: dsh-community-plugins
+      name: dsh-community-plugins
