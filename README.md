@@ -1,10 +1,12 @@
 # dsh-community-plugins
 
-> A DeepSeek Harness bundle plugin that registers the `dsh-community-plugins` skill, teaching agents how to discover, vet, and install community plugins.
+> A DeepSeek Harness (dsh) plugin that registers a global **skill** for discovering, evaluating and installing **community plugins** — from the GitHub `dsh-plugin` topic, the dshmarket GUI, and npm.
 
 [**English**](README.md) · [**中文**](docs/lang/README_zh.md)
 
 ---
+
+**Looking for a DeepSeek Harness plugin to install?** This bundle adds the `dsh-community-plugins` skill to every agent session: agents learn which marketplace tools are already installed (`market_search`, dshmarket), how to search the `dsh-plugin` ecosystem, how to vet a plugin before installing it, and how to install via `dsh plugin` (npm, GitHub, tarball, or `link:` development mode).
 
 ## Why this plugin
 
