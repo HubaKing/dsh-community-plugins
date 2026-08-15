@@ -17,15 +17,23 @@ A dsh bundle plugin that registers the `dsh-community-plugins` skill into the gl
 
 ## 安装 / Install
 
+三种方式任选（官方「打包与安装插件」教程推荐）：
+
 ```bash
-# 1. 克隆到用户根
+# 方式 1：GitHub 直装（纯 JS 零依赖，无需构建授权）
+dsh plugin --profile web add github:HubaKing/dsh-community-plugins
+
+# 方式 2：tarball（从 Release 下载，离线可用）
+curl -LO https://github.com/HubaKing/dsh-community-plugins/releases/download/v0.1.0/dsh-community-plugins-0.1.0.tgz
+dsh plugin --profile web add ./dsh-community-plugins-0.1.0.tgz
+
+# 方式 3：克隆源码 + link（开发模式，改文件即时生效）
 git clone https://github.com/HubaKing/dsh-community-plugins.git "${DSH_HOME:-~/.dsh}/plugins/dsh-community-plugins"
-
-# 2. 装入 web profile（dsh CLI 不在 PATH 时用 node 直接调 bin.js）
 node <dsh 安装根>/apps/cli/lib/bin.js plugin --profile web add link:<克隆目录绝对路径>
-
-# 3. 重启 dsh（bundle 层在启动时组合）
 ```
+
+> `dsh` CLI 不在 PATH 时，用 `node <dsh 安装根>/apps/cli/lib/bin.js plugin --profile web add <spec>`。
+> 装完**重启 dsh**（bundle 层在启动时组合）。
 
 安装后验证：`<available_skills>` 出现 `dsh-community-plugins`；`profiles/web/package.json` 的 `dsh.profile.bundles` 含包名。
 
