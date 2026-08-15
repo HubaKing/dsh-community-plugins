@@ -13,7 +13,6 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-
 /** Same rank as packaged dsh skill providers (`BUNDLED_SKILL_RANK` in `@deepseek-ai/dsh-skill`). */
 const BUNDLED_SKILL_RANK = 600
 const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
@@ -55,14 +54,14 @@ export function apply(ctx) {
  * @param {AbortSignal} [signal]
  */
 async function loadSkills(signal) {
-  const entries = await readdir(SKILLS_ROOT, { withFileTypes: true })
+  const entries = await readdir(SKILLS_ROOT, { withFileTypes: true, signal })
   const skills = []
   for (const entry of entries) {
     if (!entry.isDirectory() && !entry.isSymbolicLink()) continue
     signal?.throwIfAborted()
     const directory = join(SKILLS_ROOT, entry.name)
     const skillFile = join(directory, 'SKILL.md')
-    const parsed = parseSkill(readFileSync(skillFile, 'utf8'), directory, skillFile)
+    const parsed = parseSkill(await readFile(skillFile, 'utf8'), directory, skillFile)
     if (parsed !== undefined) skills.push(parsed)
   }
   return sortSkills(skills)
