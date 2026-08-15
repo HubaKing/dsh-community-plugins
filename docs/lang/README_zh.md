@@ -6,6 +6,8 @@
 
 ---
 
+> ⚡ 一页命令速查表：[docs/quick-reference.md](../quick-reference.md)
+
 ## 为什么需要本插件
 
 DeepSeek Harness 的插件能力通过两类机制提供：**工具（Tools）** 与 **技能（Skills）**。两者互补，缺一不可：

@@ -32,27 +32,40 @@ description: DeepSeek Harness 社区插件生态指南：发现社区插件（Gi
    注意：部分机器 shell 直连外网被阻断（curl/git 失败），但 **Node.js https 通道通常可用**（`node -e` 内 `https.get` 可通 api.github.com），npm registry 也可达。
 4. **npm**：`npm view <包名>` 查发布情况。
 
-## 3. 评估插件
+## 3. 评估插件（安装前必做）
 
-安装前检查包内容：
+安装前检查包内容；**命中危险信号时停下，向用户确认后再继续**：
 
-- `package.json` — 名称、`dsh.bundle`/`dsh.client` manifest、许可证（宽松：MIT/Apache/BSD）
+- `package.json` — 名称、`dsh.bundle` / `dsh.client` manifest、许可证（宽松：MIT/Apache/BSD；GPL/AGPL/未知许可证需提示）
 - `cordis.patch.yml` — 插入哪些行、注册什么
 - main 入口源码 — 是否执行网络请求/子进程等可疑行为
 
+**危险信号清单**（任一命中 → 停下确认）：
+
+- `install` / `postinstall` / `preinstall` 脚本（npm 包安装时会执行）
+- 源码中出现 `child_process` / `spawn` / `exec`（运行外部命令）
+- 源码中出现网络请求（`fetch` / `http` / `https` / `WebSocket`），特别是**发送数据**而非仅读取
+- 源码写入非缓存目录（如主目录、profile 目录外的敏感路径）
+- 代码被混淆/压缩到不可读，或从远程加载并执行代码（`eval` / `Function` / 动态 import 远程 URL）
+- 许可证缺失或非宽松协议
+
+确认时说明发现的具体信号与风险，由用户决定是否继续。
+
 ## 4. 安装插件
 
-标准形态是 **npm 包或 GitHub 仓库**，通过 bundle patch 挂载：
+先**判断安装形态**（决定怎么挂载与是否需重启）：
+
+1. **bundle 插件**（`package.json` 有 `dsh.bundle.patch`）→ `dsh plugin --profile web add <spec>` 自动进 `dsh.profile.bundles`；**装完需重启 dsh**（bundle 层启动时组合，HMR 不重载 bundle 层）。
+2. **client-only 插件**（只有 `dsh.client`，无 `dsh.bundle`）→ 不进 bundles；已装 dshmarket 时由其启动热挂载，否则需手动在 profile 配置后重启。
+3. **纯 cordis 插件**（无 `dsh.bundle` / `dsh.client`，只导出 `apply`）→ 经 profile 的 `cordis.patch.yml` 加 `- insert:` 行挂载（配置层 HMR 实时生效，通常无需重启）。
+
+标准安装命令：
 
 ```bash
 # 安装（dsh CLI 不在 PATH 时用 node 调 <dsh 根>/apps/cli/lib/bin.js）
 dsh plugin --profile web add <spec>
 # spec 可以是：npm 包名 | github:owner/repo | 本地路径/链接 | tarball
 ```
-
-**机制**：包的 `dsh.bundle.patch` → 包内 `cordis.patch.yml` → `- insert:` 行在 profile 启动时插入 loader 条目。装完**必须重启 dsh** 才生效（bundle 层在启动时组合；HMR 只热重载用户 patch 层，不重载 bundle 层）。
-
-**注意**：`dsh plugin add` 把包加入 `dependencies`，只有带 `dsh.bundle` 的包自动进 `bundles` 数组成为 profile 层；client-only 包（只有 `dsh.client`，无 `dsh.bundle`）不进 bundles，仅在已安装 dshmarket 时由其启动热挂载（否则需要重启并手动在 profile 配置）。
 
 **GitHub 直装与构建**：git 安装拉源码不跑构建。TypeScript 包需要 `prepare` 脚本 + pnpm `allowBuilds` 授权（用户必须显式允许，见官方文档）；纯 JS 零依赖包（如本插件）无需任何授权。
 
@@ -80,3 +93,13 @@ dsh plugin --profile web add ./dsh-community-plugins-0.1.0.tgz
 - **不改官方 shipped preset**（部署 `agent-presets` 目录下的 standard/code/minimal/cordis）——升级会被覆盖；要改就复制成用户预设（`${DSH_HOME:-~/.dsh}/.agent-presets/`）。
 - 装完插件要重启才生效；动态插件（cordis_define 等）只活在当前进程，不属社区插件。
 - 本插件源码在 `${DSH_HOME:-~/.dsh}/plugins/dsh-community-plugins/`（或克隆位置）：改 `skills/dsh-community-plugins/SKILL.md` 即时生效（`index.js` 每次发现从磁盘重读），无需重装。
+
+## 8. 实战坑位（踩过才写）
+
+- **Windows 上持久 bash 不可用**：`subprocess-local` 无法在 win32 spawn PTY bash；用 pwsh 工具或 Git Bash。
+- **Windows git 证书错误**（`schannel: SEC_E_NO_CREDENTIALS`）：`git config --global http.sslBackend openssl` 解决。
+- **git 直连外网被阻断**：curl/git 可能失败；Node https（`node -e`）与 npm registry 通常可达，web_search 最可靠。
+- **fine-grained PAT 不能建/删仓库**（403）：建仓删仓用网页，PAT 只用于推送/API。
+- **npm 2FA 拦截发布**：`npm publish` 需 bypass-2FA 的 token 或本人输入 OTP。
+- **git 安装不跑构建**：TypeScript 包装完无 `lib/` 会加载失败；pnpm ≥10 还需 `allowBuilds` 授权。
+- **装完没生效先重启**：bundle 层在启动时组合，HMR 只热重载用户 patch 层。
