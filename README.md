@@ -19,7 +19,7 @@ A dsh bundle plugin that registers the `dsh-community-plugins` skill into the gl
 
 ```bash
 # 1. 克隆到用户根
-git clone https://github.com/<owner>/dsh-community-plugins.git "${DSH_HOME:-~/.dsh}/plugins/dsh-community-plugins"
+git clone https://github.com/HubaKing/dsh-community-plugins.git "${DSH_HOME:-~/.dsh}/plugins/dsh-community-plugins"
 
 # 2. 装入 web profile（dsh CLI 不在 PATH 时用 node 直接调 bin.js）
 node <dsh 安装根>/apps/cli/lib/bin.js plugin --profile web add link:<克隆目录绝对路径>
