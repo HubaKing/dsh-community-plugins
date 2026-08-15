@@ -1,8 +1,10 @@
 # dsh-community-plugins
 
 > A DeepSeek Harness bundle plugin that registers the `dsh-community-plugins` skill, teaching agents how to discover, vet, and install community plugins.
->
-> 为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 提供社区插件生态指南的 bundle 插件，中文版见 [README.zh.md](README.zh.md)。
+
+[**English**](README.md) · [**中文**](docs/lang/README_zh.md)
+
+---
 
 ## Why this plugin
 
@@ -77,7 +79,9 @@ dsh-community-plugins/
 ├── cordis.patch.yml      # Bundle patch layer
 ├── package.json          # dsh.bundle manifest
 ├── README.md             # English
-├── README.zh.md          # 中文
+├── docs/
+│   └── lang/
+│       └── README_zh.md  # 中文
 └── skills/
     └── dsh-community-plugins/
         └── SKILL.md      # The guide read by agents

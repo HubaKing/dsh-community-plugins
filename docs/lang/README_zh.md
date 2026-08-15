@@ -1,8 +1,10 @@
 # dsh-community-plugins
 
 > 为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 提供社区插件生态指南的 bundle 插件。安装后，每个 agent 会话都会注册 `dsh-community-plugins` skill，使 agent 具备发现、评估、安装社区插件的能力。
->
-> English version: [README.md](README.md)
+
+[**English**](../../README.md) · [**中文**](README_zh.md)
+
+---
 
 ## 为什么需要本插件
 
@@ -77,7 +79,9 @@ dsh-community-plugins/
 ├── cordis.patch.yml      # bundle 补丁层
 ├── package.json          # dsh.bundle manifest
 ├── README.md             # English
-├── README.zh.md          # 中文
+├── docs/
+│   └── lang/
+│       └── README_zh.md  # 中文
 └── skills/
     └── dsh-community-plugins/
         └── SKILL.md      # agent 读取的指南
