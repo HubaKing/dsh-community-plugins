@@ -39,6 +39,9 @@ DeepSeek Harness 的插件能力通过两类机制提供：**工具（Tools）**
 # GitHub 直装（纯 JS 零依赖，无需构建授权）
 dsh plugin --profile web add github:HubaKing/dsh-community-plugins
 
+# Gitee 镜像（国内访问更快）
+dsh plugin --profile web add https://gitee.com/HubaKing/dsh-community-plugins.git
+
 # tarball（可离线）
 curl -LO https://github.com/HubaKing/dsh-community-plugins/releases/download/v0.1.2/dsh-community-plugins-0.1.2.tgz
 dsh plugin --profile web add ./dsh-community-plugins-0.1.2.tgz

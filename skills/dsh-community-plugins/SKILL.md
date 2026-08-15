@@ -81,6 +81,8 @@ dsh plugin --profile web add <spec>
 ```bash
 # 方式 A：GitHub 直装
 dsh plugin --profile web add github:HubaKing/dsh-community-plugins
+# 方式 A2：Gitee 镜像（国内访问更快）
+dsh plugin --profile web add https://gitee.com/HubaKing/dsh-community-plugins.git
 # 方式 B：tarball（curl 直连被阻断时改用浏览器下载或 Node https）
 curl -LO https://github.com/HubaKing/dsh-community-plugins/releases/download/v0.1.2/dsh-community-plugins-0.1.2.tgz
 dsh plugin --profile web add ./dsh-community-plugins-0.1.2.tgz

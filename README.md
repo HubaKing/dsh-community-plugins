@@ -41,6 +41,9 @@ Prerequisite: dsh CLI (or invoke `apps/cli/lib/bin.js` from the dsh install root
 # GitHub direct install (pure JS, zero dependencies, no build authorization)
 dsh plugin --profile web add github:HubaKing/dsh-community-plugins
 
+# Gitee mirror (faster in mainland China)
+dsh plugin --profile web add https://gitee.com/HubaKing/dsh-community-plugins.git
+
 # tarball (works offline)
 curl -LO https://github.com/HubaKing/dsh-community-plugins/releases/download/v0.1.2/dsh-community-plugins-0.1.2.tgz
 dsh plugin --profile web add ./dsh-community-plugins-0.1.2.tgz
