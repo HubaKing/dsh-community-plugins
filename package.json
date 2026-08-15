@@ -18,6 +18,8 @@
     "index.js",
     "cordis.patch.yml",
     "skills",
+    "README.md",
+    "README.zh.md",
     "LICENSE"
   ],
   "license": "MIT",

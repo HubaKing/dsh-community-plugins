@@ -17,7 +17,7 @@ description: DeepSeek Harness 社区插件生态指南：发现社区插件（Gi
 - `dsh-design-skills`（github:zhaiyateng/dsh-design-skills）— 设计美学 skill 包
 - `@deepseek-ai/dsh-base` / `@deepseek-ai/dsh-web-app` — 官方宿主基础与 Web 应用
 
-若本机没有市场插件：先装本插件（见第 4 节），或让用户装 `dshmarket`。
+若本机没有市场插件：先装本插件（见第 5 节），或让用户装 `dshmarket`。
 
 ## 2. 查找社区插件
 
@@ -52,7 +52,7 @@ dsh plugin --profile web add <spec>
 
 **机制**：包的 `dsh.bundle.patch` → 包内 `cordis.patch.yml` → `- insert:` 行在 profile 启动时插入 loader 条目。装完**必须重启 dsh** 才生效（bundle 层在启动时组合；HMR 只热重载用户 patch 层，不重载 bundle 层）。
 
-**注意**：`dsh plugin add` 把包加入 `dependencies`，只有带 `dsh.bundle` 的包自动进 `bundles` 数组成为 profile 层；client-only 包（只有 `dsh.client`）由 dshmarket 启动时热挂载。
+**注意**：`dsh plugin add` 把包加入 `dependencies`，只有带 `dsh.bundle` 的包自动进 `bundles` 数组成为 profile 层；client-only 包（只有 `dsh.client`，无 `dsh.bundle`）不进 bundles，仅在已安装 dshmarket 时由其启动热挂载（否则需要重启并手动在 profile 配置）。
 
 **GitHub 直装与构建**：git 安装拉源码不跑构建。TypeScript 包需要 `prepare` 脚本 + pnpm `allowBuilds` 授权（用户必须显式允许，见官方文档）；纯 JS 零依赖包（如本插件）无需任何授权。
 
@@ -63,7 +63,7 @@ dsh plugin --profile web add <spec>
 ```bash
 # 方式 A：GitHub 直装
 dsh plugin --profile web add github:HubaKing/dsh-community-plugins
-# 方式 B：tarball
+# 方式 B：tarball（curl 直连被阻断时改用浏览器下载或 Node https）
 curl -LO https://github.com/HubaKing/dsh-community-plugins/releases/download/v0.1.0/dsh-community-plugins-0.1.0.tgz
 dsh plugin --profile web add ./dsh-community-plugins-0.1.0.tgz
 ```
@@ -72,7 +72,7 @@ dsh plugin --profile web add ./dsh-community-plugins-0.1.0.tgz
 
 ## 6. 安装后验证
 
-1. `profiles/web/package.json` 的 `bundles` 数组含包名
+1. `${DSH_HOME:-~/.dsh}/profiles/web/package.json` 的 `bundles` 数组含包名
 2. 重启后：skill 出现在 `<available_skills>`；工具出现在工具列表；UI 出现在设置面板
 
 ## 7. 约束与边界
