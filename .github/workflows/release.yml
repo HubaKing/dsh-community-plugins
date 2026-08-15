@@ -35,11 +35,48 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_NOTES: >-
+            ## dsh-community-plugins ${{ github.ref_name }}
+
+            为 DeepSeek Harness 提供社区插件生态指南的 bundle 插件：注册 `dsh-community-plugins` skill，使 agent 具备发现、评估、安装社区插件的能力。
+
+            ### 安装
+
+            ```bash
+            # 方式 1：GitHub 直装（推荐，纯 JS 零依赖）
+            dsh plugin --profile web add github:HubaKing/dsh-community-plugins
+
+            # 方式 2：tarball（可离线）
+            curl -LO https://github.com/HubaKing/dsh-community-plugins/releases/download/${{ github.ref_name }}/dsh-community-plugins-${{ github.ref_name }}.tgz
+            dsh plugin --profile web add ./dsh-community-plugins-${{ github.ref_name }}.tgz
+
+            # 方式 3：源码 + link（开发模式，修改即时生效）
+            git clone https://github.com/HubaKing/dsh-community-plugins.git "${DSH_HOME:-~/.dsh}/plugins/dsh-community-plugins"
+            dsh plugin --profile web add link:"${DSH_HOME:-~/.dsh}/plugins/dsh-community-plugins"
+            ```
+
+            > `dsh` 不在 PATH 时：`node <dsh 安装根>/apps/cli/lib/bin.js plugin --profile web add <spec>`
+
+            ### 使用
+
+            1. 安装后**重启 dsh**（bundle 层在启动时组合）
+            2. 新开一个会话，`<available_skills>` 目录出现 `dsh-community-plugins` 即生效
+            3. 直接问 agent：「本机装了什么插件？」或「推荐一个记忆类插件」——它会用 `market_search` 等市场工具检索并给出安装命令
+
+            ### 验证
+
+            - `${DSH_HOME:-~/.dsh}/profiles/web/package.json` 的 `dsh.profile.bundles` 含包名
+            - 会话 skill 目录出现本 skill
+
+            ### 文档
+
+            - README 中英双语（English / 中文），语言切换栏在文档顶部
+            - 官方文档：[打包与安装插件](https://deepseek-harness.github.io/deepseek-harness/develop/basic/publish) · [生命周期](https://deepseek-harness.github.io/deepseek-harness/develop/framework/)
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           gh release create "$TAG" \
             --title "$TAG" \
-            --notes "dsh-community-plugins $TAG — 社区插件生态指南 skill 插件。详见 README.md（中英双语）。" \
+            --notes "$RELEASE_NOTES" \
             "dsh-community-plugins-"*.tgz
 
       - name: Publish to npm
