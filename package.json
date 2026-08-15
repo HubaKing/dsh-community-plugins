@@ -1,6 +1,6 @@
 {
   "name": "dsh-community-plugins",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "DSH 社区插件生态指南：注册「dsh-community-plugins」skill，让每个会话都知道本 harness 已内置插件市场（dshmarket / dsh-plugin-marketplace）以及如何查找、评估、安装社区插件。",
   "type": "module",
   "main": "index.js",
