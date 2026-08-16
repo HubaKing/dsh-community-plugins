@@ -26,10 +26,11 @@ DeepSeek Harness 的插件能力通过两类机制提供：**工具（Tools）**
 ## 功能
 
 - 注册全局 skill：所有会话的 `<available_skills>` 目录自动出现 `dsh-community-plugins`
-- 指导 agent 识别本机已安装插件（dshmarket、dsh-plugin-marketplace 等）
-- 提供社区插件查找途径：GitHub `dsh-plugin` topic、npm、dshmarket 市场快照
-- 提供官方推荐的安装方式：`dsh plugin` 命令、GitHub 直装、tarball、`link:` 开发模式
-- 约束说明：不改官方 shipped preset、装后需重启、构建授权边界
+- 指导 agent 以实测为准识别本机已装插件（读 profile manifest，不假设、不推荐未安装的第三方插件）
+- 提供中立的发现渠道：已装市场的工具、目录/索引源（`Oh-My-DSH` 的 `data/plugins.json`、`awesome-dsh-plugin`）、GitHub `dsh-plugin` topic、npm
+- 提供官方安装方式与提速要点：`dsh plugin` 命令、npm-first、批量安装、按形态决定热挂载 vs 重启
+- 说明 pnpm 供应链策略（`minimumReleaseAge`）及其对策
+- 约束说明：不改官方 shipped preset、重启规则、构建授权边界
 
 ## 安装
 
@@ -66,7 +67,7 @@ dsh plugin --profile web add link:${DSH_HOME:-~/.dsh}/plugins/dsh-community-plug
 
 要点：
 
-- **纯 JavaScript、零依赖**：GitHub 直装无需 `prepare` 脚本与 `allowBuilds` 授权（TypeScript 插件的构建门槛，见官方文档）
+- **纯 JavaScript、无构建脚本**（唯一依赖 `yaml`）：GitHub 直装无需 `prepare` 脚本与 `allowBuilds` 授权（TypeScript 插件的构建门槛，见官方文档）
 - **热更新**：`index.js` 每次发现时从磁盘重读，编辑 `SKILL.md` 无需重启、无需重装
 - **符合官方插件规范**：函数形式 `export const name` + `export function apply(ctx)` + `dsh.bundle` manifest
 

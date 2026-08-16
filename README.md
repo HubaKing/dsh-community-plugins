@@ -28,17 +28,18 @@ Without this plugin, agents fall back to generic web search. With it, every new 
 ## Features
 
 - Registers a global skill: `dsh-community-plugins` appears in every session's `<available_skills>` catalog
-- Teaches the agent to identify locally installed plugins (dshmarket, dsh-plugin-marketplace, etc.)
-- Provides community plugin discovery channels: GitHub `dsh-plugin` topic, npm, dshmarket registry snapshot
-- Documents the official install methods: `dsh plugin` command, GitHub direct install, tarball, `link:` development mode
-- States the constraints: do not modify official shipped presets, restart required after install, build-authorization boundaries
+- Teaches the agent to verify what is actually installed on this machine (read the profile manifest; never assume or promote uninstalled plugins)
+- Provides neutral discovery channels: installed-market tools, directory indexes (`Oh-My-DSH` `data/plugins.json`, `awesome-dsh-plugin`), GitHub `dsh-plugin` topic, npm
+- Documents the official install methods plus speed-ups: `dsh plugin` command, npm-first, batch installs, hot-mount vs restart by plugin form
+- Documents the pnpm supply-chain policy (`minimumReleaseAge`) and its workarounds
+- States the constraints: no modification of official shipped presets, restart rules, build-authorization boundaries
 
 ## Install
 
 Prerequisite: dsh CLI (or invoke `apps/cli/lib/bin.js` from the dsh install root). Choose one of the following:
 
 ```bash
-# GitHub direct install (pure JS, zero dependencies, no build authorization)
+# GitHub direct install (pure JS, no build scripts, no build authorization)
 dsh plugin --profile web add github:HubaKing/dsh-community-plugins
 
 # Gitee mirror (faster in mainland China)
@@ -68,7 +69,7 @@ dsh plugin --profile web add link:${DSH_HOME:-~/.dsh}/plugins/dsh-community-plug
 
 Key points:
 
-- **Pure JavaScript, zero dependencies**: GitHub direct install needs no `prepare` script or `allowBuilds` authorization (the build gate for TypeScript plugins, per the official docs)
+- **Pure JavaScript, no build scripts**: single dependency `yaml`; GitHub direct install needs no `prepare` script or `allowBuilds` authorization (the build gate for TypeScript plugins, per the official docs)
 - **Hot update**: `index.js` re-reads from disk on every discovery; editing `SKILL.md` requires no restart or reinstall
 - **Official plugin shape**: function form `export const name` + `export function apply(ctx)` + `dsh.bundle` manifest
 
