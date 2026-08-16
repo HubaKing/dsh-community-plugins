@@ -16,6 +16,10 @@ description: DeepSeek Harness 社区插件生态指南：发现社区插件（Gi
 - `@deepseek-ai/dsh-base` — 官方宿主核心（工具、持久化、策略等基础行）
 - `@deepseek-ai/dsh-web-app` — 官方 Web 表层（浏览器宿主、前端产物）
 
+可能已安装的第三方成员（**是否安装以实测为准，未安装不引导安装**）：
+
+- `dsh-plugin-marketplace`（github:AwesomeHou/dsh-plugin-marketplace）— 插件市场：提供 `market_search` / `market_install` / `market_installed` / `market_update` agent 工具（第 2 节查找时会用到）
+
 若用户想安装市场类插件，先按第 3 节评估并向用户确认，不要默认推荐某个市场。
 
 ## 2. 查找社区插件
@@ -24,15 +28,16 @@ description: DeepSeek Harness 社区插件生态指南：发现社区插件（Gi
 
 按可靠性排序：
 
-1. **web_search**：搜索 GitHub `dsh-plugin` 话题与 npm 上的 `dsh-*` 包（默认渠道，任何模型可用）。
-2. **GitHub API**：
+1. **`market_search` 工具**（若 §1 实测 `dsh-plugin-marketplace` 已生效）：直接搜 GitHub `dsh-plugin` 话题，返回 JSON 列表（name/stars/language/description/url）。
+2. **web_search**：搜索 GitHub `dsh-plugin` 话题与 npm 上的 `dsh-*` 包（默认渠道，任何模型可用）。
+3. **GitHub API**：
    ```
    https://api.github.com/search/repositories?q=topic:dsh-plugin&sort=stars
    ```
    注意：部分机器 shell 直连外网被阻断（curl/git 失败），但 **Node.js https 通道通常可用**（`node -e` 内 `https.get` 可通 api.github.com），npm registry 也可达。
-3. **npm**：`npm view <包名>` 查发布情况（版本、许可证、依赖）。
+4. **npm**：`npm view <包名>` 查发布情况（版本、许可证、依赖）。
 
-若 §1 实测发现本机已安装市场类插件（自带搜索/安装工具），可优先使用其工具；未安装时按上述渠道查找，不引导安装。
+若 §1 实测发现本机已安装其他市场类插件（自带搜索/安装工具），可优先使用其工具；未安装时按上述渠道查找，不引导安装。
 
 ## 3. 评估插件（安装前必做）
 
