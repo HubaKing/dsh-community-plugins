@@ -20,7 +20,7 @@ description: DeepSeek Harness 社区插件生态指南：发现社区插件（Gi
 
 ## 2. 发现渠道与市场选择
 
-先明确需求类别：**skill 类**（知识/流程）、**工具类**（模型工具/能力）、**UI 类**（Web 界面/皮肤）、**集成类**（外部服务/渠道）——分类搜索命中更准。
+先明确需求类别：**skill 类**（知识/流程）、**工具类**（模型工具/能力）、**UI 类**（Web 界面/皮肤）、**集成类**（外部服务/渠道）、**provider 类**（模型路由/凭据）——分类搜索命中更准。
 
 ### 发现渠道（按可靠性排序）
 
@@ -55,6 +55,12 @@ description: DeepSeek Harness 社区插件生态指南：发现社区插件（Gi
 | `dsh-plugin-marketplace`（github:AwesomeHou/…） | 安装器备选 | bundle+client；**装完需重启**（无热挂载）；GitHub topic 同步；4 个 agent 工具（market_search/market_install/market_installed/market_update）；monorepo 插件走 clone+构建（慢） |
 | `DSH-Plugins-Marketplace`（github:bradeGithub/…） | 全量安装器（谨慎） | bundle+client；**装完需重启**；5000+ 全量索引（CDN 分发）；**会执行第三方安装脚本**（有确认弹窗+静态扫描，非沙箱）；新项目（2026-08 创建），建议备份 profile 试用 |
 | `Oh-My-DSH` / `awesome-dsh-plugin` | 纯发现渠道 | 非安装器，只「找得到」，落地安装仍需回插件仓库或 `dsh plugin add` |
+
+### 单插件短名单（非背书；按需求选择）
+
+| 插件 | 类别 | 关键结论 |
+|---|---|---|
+| `dsh-llm-local-token`（github:tianxia--/dsh-llm-local-token） | provider / 模型路由 / 凭据 | 复用本机 Codex CLI 与 Claude Code OAuth 凭据提供 `openai-codex`、`anthropic` 路由；缺凭据时跳过对应路由；MIT、Node >=22.13.0；npm 发布中，当前可用 git URL 安装 |
 
 ## 3. 评估插件（安装前必做）
 
