@@ -60,7 +60,7 @@ description: DeepSeek Harness 社区插件生态指南：发现社区插件（Gi
 
 | 插件 | 类别 | 关键结论 |
 |---|---|---|
-| `dsh-llm-local-token`（github:tianxia--/dsh-llm-local-token） | provider / 模型路由 / 凭据 | 复用本机 Codex CLI 与 Claude Code OAuth 凭据提供 `openai-codex`、`anthropic` 路由；缺凭据时跳过对应路由；MIT、Node >=22.13.0；npm 发布中，当前可用 git URL 安装 |
+| `dsh-llm-local-token`（npm） | provider / 模型路由 / 凭据 | bundle+client；复用本机 Codex CLI 与 Claude Code 已有的 OAuth 凭据注册 `openai-codex`、`anthropic` 路由，免另配 API key（token 按请求解析、临期自动刷新，交给 dsh 自带 pi-ai 引擎）；面板读 provider 限流响应头、按计划刷新展示订阅剩余额度（含 GLM Coding Plan）；缺凭据的路由跳过而非启动失败；MIT、Node >=22.13.0、web profile；`dsh plugin --profile web add dsh-llm-local-token` 一条命令装完 |
 
 ## 3. 评估插件（安装前必做）
 
