@@ -1,13 +1,11 @@
 ---
 name: dsh-community-plugins
-description: DeepSeek Harness 社区插件生态指南：发现社区插件（GitHub dsh-plugin topic 检索、第三方目录/市场、npm）、评估与安装（仓库名≠npm 包名的识别、许可证交叉核验、API 兼容性核查、安装脚本风险、dsh plugin 命令、bundle 机制、tarball、GUI），含安装提速与供应链策略。**只提供方法与客观事实，不推荐、不排序、不背书任何第三方插件或市场，选择权交回用户**。Use when the user asks to find, browse, install, update, or remove community plugins/extensions/skins/themes/skills for this harness, or asks what community plugins exist.
+description: DeepSeek Harness 社区插件生态指南：发现（GitHub dsh-plugin topic 检索、目录/索引源、npm）、评估与安装社区插件（仓库名≠npm 包名、许可证交叉核验、API 兼容性核查、安装脚本风险、bundle 机制、tarball、GUI），含安装提速与供应链策略。只提供方法与事实，不推荐任何第三方插件或市场。Use when the user asks to find, browse, install, update, or remove community plugins/extensions/skins/themes/skills for this harness, or asks what community plugins exist.
 ---
 
 # DSH 社区插件：发现、评估与安装
 
-本 Harness 运行 DeepSeek Harness（dsh）。社区插件生态围绕 GitHub 的 `dsh-plugin` 话题与 npm 上的 `dsh-*` 包展开。**动手前先确认本机实际装了什么**，不假设、不绑定单一市场。
-
-> **本 skill 只提供方法与客观事实，不做任何推荐**（详见 §2「本 skill 的立场」）。用户问「用哪个」时，给出候选与逐条事实，**由用户自己评估决定**。
+本 Harness 运行 DeepSeek Harness（dsh）。社区插件生态围绕 GitHub 的 `dsh-plugin` 话题与 npm 上的 `dsh-*` 包展开。动手前先确认本机实际装了什么，不假设、不绑定单一市场。本 skill 只提供方法与事实，不推荐任何第三方插件或市场。
 
 ## 1. 先看本机已装什么
 
@@ -20,90 +18,82 @@ description: DeepSeek Harness 社区插件生态指南：发现社区插件（Gi
 - `@deepseek-ai/dsh-base` — 官方宿主核心（工具、持久化、策略等基础行）
 - `@deepseek-ai/dsh-web-app` — 官方 Web 表层（浏览器宿主、前端产物）
 
-若本机已装有市场类插件（§2 已列出的安装器或面板），优先使用其自带工具；未安装时按 §2 渠道查找，**不主动推荐、不引导安装某个市场**——除非用户明确要求装市场。本 skill 只提供方法与客观事实，**选择权始终在用户**。
+若本机已装有市场类插件（§2 已列出的安装器或面板），优先使用其自带工具；未安装时按 §2 渠道查找。不主动推荐或引导安装某个市场，除非用户明确要求。
 
 ## 2. 发现渠道与市场选择
 
 先明确需求类别：**skill 类**（知识/流程）、**工具类**（模型工具/能力）、**UI 类**（Web 界面/皮肤）、**集成类**（外部服务/渠道）、**provider 类**（模型路由/凭据）——分类搜索命中更准。
 
-### 发现渠道（按可靠性排序）
+### 发现渠道
 
-1. **本机已装市场的工具/面板**（§1 实测为准）：如自带搜索/安装工具的可直接调用。
-2. **目录/索引源（只做检索，不执行任何代码）**：这类源本身不安装、不运行第三方插件，只是可检索的清单，用于**发现候选**。以下是已知的几个（**仅说明存在与用法，非推荐，使用前请自行核查其内容与时效**）：
-   - 机器可读的索引源示例：提供 `data/plugins.json` 之类的结构化清单（含 stars / language / license / pushed_at / category 字段），可直接抓取做筛选；注意其条目数为**抓取时的快照**，会随时间变化，不要当固定值。
-   - 人工策展的 awesome 列表类站点：条目标注可用 `dsh plugin add` 的包，可与机器可读索引交叉核验。
-   > 索引源的价值是**扩大候选池**，不是替你做质量判断：清单里的条目同样要按 §3 独立核查。
-3. **GitHub topic 检索（按类别找插件的主力渠道）**：用户说「帮我找一个好用的 X 类插件」时，这是命中率最高的入口——直接按 topic + 类别关键词检索，一次拿到带 stars / 推送时间的候选池，比通用 web_search 精准得多：
+1. **本机已装市场的工具/面板**（§1 实测为准）：自带搜索/安装工具的可直接调用。
+2. **目录/索引源**：只做检索，不安装、不执行代码。用于扩大候选池，条目仍须按 §3 核查。
+   - 机器可读索引：`data/plugins.json` 类结构化清单（含 stars / language / license / pushed_at / category），可直接抓取筛选。条目数会变化，不是固定值。
+   - awesome 列表类站点：条目标注可用 `dsh plugin add` 的包，可与机器可读索引交叉核验。
+3. **GitHub topic 检索（按类别找插件的主力渠道）**：按 topic + 类别词检索，一次拿到带 stars / 推送时间的候选池，比通用 web_search 精准。
    ```
    https://api.github.com/search/repositories?q=topic:dsh-plugin+skin&sort=stars&per_page=30
    ```
-   把 `skin` 换成需求类别词（`theme` / `ui` / `memory` / `mcp` / `skill` / `tui` …）；`+theme`、`+ui` 等宽泛词候选多但噪声大，具体词（`skin`）更准。实测 `topic:dsh-plugin+skin` 出 187 个仓库、`+theme` 出 334 个、`+ui` 出 936 个。想按中文找，直接 URL 编码中文关键词（如 `topic:dsh-plugin+%E7%9A%AE%E8%82%A4`）。
-   注意：部分机器 shell 直连外网被阻断（curl/git 失败），但 **Node.js https 通道通常可用**（`node -e` 内 `https.get` 可通 api.github.com），npm registry 也可达；GitHub API 未认证有时限流（403），此时换 raw.githubusercontent.com 或网页渠道。
-4. **web_search**：搜 `dsh-plugin` 话题与 npm 上的 `dsh-*` 包（通用兜底，任何模型可用）。
-5. **npm**：`npm view <包名>` 查发布情况（版本、许可证、依赖）——**注意 `<包名>` 必须是 `package.json` 的 `name` 字段，不是仓库名**，见下节。
+   把 `skin` 换成类别词（`theme` / `ui` / `memory` / `mcp` / `skill` / `tui` …）。宽泛词候选多但噪声大，具体词更准。中文关键词可直接 URL 编码。
+   部分机器 shell 直连外网被阻断（curl/git 失败），此时用 Node.js https 通道（`node -e` 内 `https.get`）；GitHub API 未认证会限流（403），可换 raw.githubusercontent.com 或网页渠道。
+4. **web_search**：搜 `dsh-plugin` 话题与 npm 的 `dsh-*` 包（通用兜底）。
+5. **npm**：`npm view <包名>` 查版本、许可证、依赖。`<包名>` 必须是 `package.json` 的 `name`，不是仓库名（见下节）。
 
-### ⚠️ 仓库名 ≠ npm 包名（判断「是否已发布」前必读）
+### ⚠️ 仓库名 ≠ npm 包名
 
-**`dsh plugin add` 用的是 `package.json` 的 `name` 字段，不是 GitHub 仓库名。二者经常完全不同**，拿仓库名去 `npm view` 会得到假 404，从而误判「未发布、只能走 GitHub 慢装」。
+`dsh plugin add` 用 `package.json` 的 `name`，不是 GitHub 仓库名。二者常完全不同，按仓库名查 npm 会得到假 404，误判为「未发布」。
 
-常见的差异形态（**形态说明，非具体插件**——本 skill 不列举具体第三方包名）：
+常见差异形态：
 
-| 差异形态 | 表现 | 说明 |
+| 形态 | 表现 |
+|---|---|
+| 名称完全不同 | 仓库名与包名无字面关系（最常见） |
+| 带 npm scope | 包名为 `@<scope>/<name>`，scope 与作者/组织名可能不同 |
+| 后缀不同 | 包名是仓库名的变体（加/减词、改后缀） |
+
+**流程**：拉 `https://raw.githubusercontent.com/<owner>/<repo>/<branch>/package.json` → 读 `name` → 用它查 npm。
+
+monorepo 注意：根 `package.json` 可能无 `name` 或是总包，真正的插件包在子目录（如 `packages/<name>/`）。此时分别读各子包 `package.json`。
+
+### 立场
+
+不推荐、不排序、不背书任何第三方插件或市场。理由：该生态变化快，任何排名都会过期。
+
+- 用户问「哪个插件好」：列出候选，逐条给事实（形态、许可、活跃度、风险），结论由用户下。
+- 本文档出现的包名仅为事实实例，不构成推荐。
+- 任何第三方插件一律按 §3 独立核查，不因在本文档出现过而降低标准。
+
+### 市场/安装器核查维度
+
+逐项核查，不打分：
+
+- **生效方式**：装完是否需重启 dsh。支持热挂载则免重启。
+- **来源范围**：人工策展（防 name-squatting）或 topic 全量同步（覆盖广、噪声多）。
+- **闭环能力**：安装/更新/卸载/回滚/降级保护。
+- **agent 工具**：提供 market_search 类工具，或仅 GUI。
+- **安全**：网络是否只读、有无遥测、是否执行第三方安装脚本。
+- **活跃度与许可证**：最近提交/发布；许可证类型（宽松：MIT/Apache/BSD；GPL/AGPL/未知需提示）。
+
+### 已知市场/安装器
+
+截至 2026-08 实测，非完整清单，不构成推荐：
+
+| 市场/安装器 | 形态 | 属性 |
 |---|---|---|
-| 名称完全不同 | 仓库名与包名毫无字面关系 | 最常见，按仓库名查 npm 必然 404 |
-| 带 npm scope | 包名形如 `@<scope>/<name>` | scope 通常与作者/组织名相关，但仍可能不同 |
-| 后缀不同 | 包名是仓库名的变体（加/减词、改后缀） | 字面接近但**不等于**仓库名，仍会 404 |
+| `dshmarket`（npm） | bundle+client | 热挂载（自身首次安装需重启）；约 839 条 curated 索引；含安装/更新/卸载/回滚/降级保护；纯 GUI；MIT、联网只读、无遥测 |
+| `dsh-plugin-marketplace`（github） | bundle+client | 无热挂载；GitHub topic 同步；4 个 agent 工具（market_search/market_install/market_installed/market_update）；monorepo 走 clone+构建 |
+| `DSH-Plugins-Marketplace`（github） | bundle+client | 无热挂载；5000+ 索引（CDN）；执行第三方安装脚本（确认弹窗+静态扫描，非沙箱）；2026-08 创建 |
+| 目录/索引类站点 | 非安装器 | 仅检索；安装走插件仓库或 `dsh plugin add` |
 
-**正确流程**：拉 `https://raw.githubusercontent.com/<owner>/<repo>/<branch>/package.json` → 读 `name` 字段 → 再用它查 npm。
+表内属性会变化，使用前自行复核。
 
-注意仓库内可能有多个包（monorepo）：根 `package.json` 可能没有 `name` 或是总包，真正的插件包在子目录（常见的如 `packages/<name>/`、`plugin-<name>/`）。此时分别读各子包 `package.json`。
+### 已收录插件
 
-> 这条直接影响呈现给用户的事实是否准确：曾因按仓库名查 npm 得到 404，把一个**实际已发布**的插件错误归类为「未发布、需 GitHub 慢装」，给出了错误对比结论。
-
-### 本 skill 的立场：只做方法，不做推荐
-
-**本 skill 不推荐任何第三方插件或市场，不为任何一方背书，也不替用户排序。** 原因是这个生态里没有稳定的"最佳选择"——插件质量、维护状态、许可证、API 兼容性都在快速变化，任何排名都会很快过期并误导用户。
-
-**因此：**
-
-- 用户问「哪个插件好」时，**不要给排名或指名推荐**。应当：说明有哪些候选，给出下面这套**客观事实与检查项**，让用户自己判断取舍。
-- 本 skill 里出现的具体包名，**只作为「客观事实的实例」或「用于验证方法有效性的样本」**，不构成推荐。是否采用由用户决定。
-- 遇到任何第三方插件，**一律按 §3 独立核查**（危险信号、许可证、API 兼容性、活跃度），**不因为它在本文档里出现过就降低标准**。
-- 用户明确要求「帮我挑一个」时，可以列出候选并**逐条呈现事实**（形态、许可、活跃度、已知风险），但**结论必须交回用户**——说清各自的取舍，不代做选择。
-
-### 评估「插件市场/安装器」时看什么
-
-不排名，但可用以下维度逐项核查（每一项都是事实判断，不是打分）：
-
-- **生效方式**：装完第三方插件是否需要重启 dsh？支持热挂载的可免重启，不支持则每装一个都要重启一次。
-- **来源收窄程度**：列表是人工策展（可防 name-squatting）还是 topic 全量同步（覆盖大但噪声多）？
-- **闭环能力**：是否支持安装/更新/卸载/失败回滚/降级保护？
-- **agent 工具**：是否提供 market_search 类工具（agent 可直接调用）还是纯 GUI？
-- **安全审查**：网络是否只读？有无遥测？**是否执行第三方安装脚本**（是否沙箱、有无确认弹窗与静态扫描）？
-- **活跃度与许可证**：最近提交/发布、许可证类型（宽松：MIT/Apache/BSD；GPL/AGPL/未知需提示）。
-
-### 已知的市场/安装器（客观事实，非推荐）
-
-> 以下是**截至 2026-08 的静态实测属性**，**不构成推荐、不排序、不承诺仍然有效**。列出的唯一目的：让你知道"这类工具存在、它们之间客观差异在哪"，以便按上面的维度自行核查。**这不是完整清单**——仅列当时已知的几个；新出现的、更好的、或已废弃的都可能不在此表内。
->
-> 属性会随时间变化（条目数、是否执行安装脚本、维护状态都会变），**使用前必须自行复核**，不要直接采信本表。
-
-| 市场/安装器 | 形态 | 当时实测的客观属性 |
-|---|---|---|
-| `dshmarket`（npm） | bundle+client | 支持热挂载（首次安装其自身需重启一次）；当时索引约 839 条 curated 插件；含安装/更新/卸载/回滚/降级保护；纯 GUI、无 agent 工具；MIT、联网只读、无遥测 |
-| `dsh-plugin-marketplace`（github） | bundle+client | 无热挂载，装完需重启；GitHub topic 同步；提供 4 个 agent 工具（market_search/market_install/market_installed/market_update）；monorepo 插件走 clone+构建 |
-| `DSH-Plugins-Marketplace`（github） | bundle+client | 无热挂载，装完需重启；当时索引 5000+ 条（CDN 分发）；**会执行第三方安装脚本**（有确认弹窗+静态扫描，非沙箱）；2026-08 创建 |
-| 目录/索引类站点 | 非安装器 | 只提供检索，不安装、不执行代码；落地安装仍需回插件仓库或 `dsh plugin add` |
-
-### 已收录插件（客观事实，非推荐）
-
-> 收录门槛：已发布 npm、许可证宽松、通过 §3 危险信号检查。**收录不等于推荐、不等于背书**——每条只陈述已核实的事实与已知风险，**是否采用由用户自行评估**。
->
-> 表格中**不写版本号**（npm latest 与仓库 main 常不同步，钉版本号必然过期，见 §3）；需要最新版用 `npm view <包名> version` 当场核实。
+收录门槛：已发布 npm、许可证宽松、通过 §3 检查。收录不等于推荐。
 
 | 插件 | 类别 | 活跃度 | 已核实事实 |
 |---|---|---|---|
-| `dsh-llm-local-token`（npm） | provider / 模型路由 / 凭据 | 3 stars；2026-08 创建，活跃（最近推送 2026-09） | bundle+client；读取本机 Codex CLI 与 Claude Code 已有的 OAuth 凭据，注册 `openai-codex`、`anthropic` 路由（token 按请求解析、临期自动刷新，交给 dsh 自带 pi-ai 引擎）；面板读 provider 限流响应头、按计划刷新展示订阅剩余额度（含 GLM Coding Plan）；缺凭据的路由跳过而非启动失败；MIT、Node >=22.13.0、web profile、**无 install 脚本**；安装：`dsh plugin --profile web add dsh-llm-local-token` |
+| `dsh-llm-local-token`（npm） | provider / 模型路由 / 凭据 | 3 stars；2026-08 创建，最近推送 2026-09 | bundle+client；读取本机 Codex CLI 与 Claude Code 的 OAuth 凭据，注册 `openai-codex`、`anthropic` 路由（token 按请求解析、临期自动刷新，交给 dsh 自带 pi-ai 引擎）；面板读 provider 限流响应头、按计划刷新展示订阅剩余额度（含 GLM Coding Plan）；缺凭据的路由跳过而非启动失败；MIT、Node >=22.13.0、web profile、无 install 脚本。安装：`dsh plugin --profile web add dsh-llm-local-token` |
 
 **本地实测记录（2026-09，dsh `0.1.5-rc.1` / Node v24.21.0 / Windows）**：安装 904ms 完成并自动进入 `dsh.profile.bundles`；供应链复验 7 个 lib 文件与 npm tarball SHA-256 全部一致；`import()` 加载正常；peer `^0.1.0-rc.6` 区间满足，`registerAdapter` / `LlmError` / `PiAiAdapter` 均存在。即"能装上且当前 API 可用"，但**这不等于它适合你的场景**。
 
@@ -120,36 +110,24 @@ description: DeepSeek Harness 社区插件生态指南：发现社区插件（Gi
 - **维护者弃养声明** — 读 README 顶部：部分作者会明确写「无法及时适配新 API，崩溃请自行修理」。这不是拒绝安装的理由，但必须**告诉用户**：未来升级 dsh 后可能需自行修复或卸载
 - 用目录源（§2）检索时，直接过滤 `archived: true`、`fork: true`、许可证缺失、`pushed_at` 过老的条目
 
-### ⚠️ 写版本号必过期：npm latest ≠ 仓库 main
+### ⚠️ 不写版本号：npm latest ≠ 仓库 main
 
-**在 skill/文档里钉死某个插件的版本号，几乎必然写错**——npm 发布与仓库 main 是两条独立推进的线，作者常常先推代码后发 npm（或反之）：
+npm 发布与仓库 main 是两条独立推进的线，钉死版本号必然过期（实测某包 npm 为 `1.5.1`、仓库已 `1.6.1`）。
 
-- 实测 `dsh-llm-local-token`：npm latest 为 **`1.5.1`**，但仓库 `package.json` 已是 **`1.6.1`**，且仓库 `pushed_at` 晚于该 npm 发布。
+1. 描述插件时只写包名，让 pnpm 解析最新版；要装用 `add <包名>`。
+2. 确需引用版本时，当场核实并标注日期（如「截至 2026-09 为 1.6.1」）。
+3. 两个来源不一致时都要说明，不要只报一个数字。
+4. `dsh plugin update` 报「已最新」但 `npm view` 有新版：多半是 pnpm `minimumReleaseAge` 拦截，见 §4。
 
-**规则**：
+### ⚠️ 许可证判定：不要信 GitHub 徽章
 
-1. **描述插件时不写版本号**，只写包名（要装就 `add <包名>`，让 pnpm 解析最新版）。
-2. 需要引用版本时，**必须当场核实并标注核实日期**，例如「截至 2026-09 为 1.6.1」。
-3. 反馈两类来源不一致时，**两个都说**（如「npm 1.5.1 / 仓库 1.6.1」），不要只报一个数字当成事实。
-4. 反过来，**`dsh plugin update` 报「已最新」但 `npm view` 有新版**时，多半不是这里的问题，而是 pnpm 的 `minimumReleaseAge` 拦了（见 §4）。
+GitHub 的许可证识别（网页徽章与 API `license.spdx_id`）会把仓库内 vendored 的第三方文件误判为主许可证。实测有仓库徽章与 API 均报 AGPL-3.0，但 `LICENSE` 全文与 npm 包 `license` 字段都是 MIT。
 
-> 这条与「仓库名 ≠ npm 包名」是同一类错误的两面：都是**把一条线上的事实当成另一条线的结论**。
+只要仓库含其他协议的第三方文件（vendored 代码、字体、图标、生成物）就可能触发，因此任何仓库都须交叉核验：
 
-### ⚠️ 许可证判定：不要信 GitHub 的 license 徽章
-
-GitHub 的许可证识别（网页徽章与 API `license.spdx_id`）**会把仓库内 vendored 的第三方文件误判为主许可证**，实测会给出错误结论：
-
-- 实测某仓库：GitHub 徽章与 API 均报 **AGPL-3.0**，但仓库 `LICENSE` 全文与 npm 包 `license` 字段**都是 MIT**（该仓库内含其他协议的文件，被分类器当成了主协议）。
-
-> 该误判**不是个例**：只要仓库里带了别的协议的第三方文件（vendored 代码、字体、图标、生成物），徽章就可能指向那个文件而不是主许可证。所以**任何**仓库都必须按下面的流程交叉核验，不能只看徽章。
-
-**判定流程（必须交叉核验，不要单凭徽章下结论）**：
-
-1. 读仓库 `LICENSE` **文件全文**首行（不是徽章）
-2. 读 npm 包 `package.json` 的 `license` 字段（`npm view <pkg> license`）
-3. 两者不一致时，以 LICENSE 全文 + 包内 `license` 字段为准，并在结论里说明分歧
-
-误判代价是双向的：把 MIT 误报成 AGPL 会让用户白白放弃一个合规插件；反过来漏报真正的强传染协议则更严重。**不确认就不要下许可证结论。**
+1. 读仓库 `LICENSE` 全文首行（不是徽章）
+2. 读 npm 包 `license` 字段（`npm view <pkg> license`）
+3. 不一致时以 1、2 为准，并说明分歧
 
 **危险信号清单**（任一命中 → 停下确认）：
 
@@ -164,7 +142,7 @@ GitHub 的许可证识别（网页徽章与 API `license.spdx_id`）**会把仓�
   - 它们通常**手工改写 profile 的 `cordis.patch.yml`、建 junction/软链到 `node_modules`**，从而**绕过 `dsh plugin` 的依赖管理**——后续 `dsh plugin update` / `remove` 管不到它，卸载会残留
   - **优先用 `dsh plugin --profile web add <包名>`**；仅当包确实未发布到 npm 时，才考虑这类脚本，且必须**读完全文**再决定
   - 审的时候确认：是否幂等（重复跑不重复登记）、删除链接时是否 `-Recurse` 跟随（会误删目标目录）、下载源是否固定版本（跟随 `main` 分支等于每次安装内容都不同）
-  - 脚本本身逻辑规范**不等于**该用它——实测有仓库的 `install.ps1` 写法克制、幂等、注释清楚，但同名的 npm 包已发布，此时用 npm 装仍明显更优（少一层绕过依赖管理的手工步骤）
+  - 脚本逻辑规范不等于该用它：实测有仓库的 `install.ps1` 写法克制、幂等、注释清楚，但同名 npm 包已发布，用 npm 装仍更优（无需绕过依赖管理）
 
 确认时说明发现的具体信号与风险，由用户决定是否继续。
 
@@ -267,7 +245,7 @@ node "<dsh 根>/apps/cli/lib/bin.js" plugin --profile web list   # 应列出该�
 
 ## 6. 约束与边界
 
-- **不做推荐**：不推荐、不排序、不背书任何第三方插件或市场（详见 §2「本 skill 的立场」）。本 skill 提到的具体包名只是客观事实实例，不构成推荐；用户问「用哪个」时给出事实与取舍，**由用户自己评估决定**。
+- **不做推荐**：不推荐、不排序、不背书任何第三方插件或市场（见 §2「立场」）。本文档出现的包名仅为事实实例，不构成推荐；用户问「用哪个」时给出事实与取舍，由用户决定。
 - 本 skill 由 `dsh-community-plugins` 插件注册提供；能读到本 skill 即说明插件已生效。
 - **不改官方 shipped preset**（部署 `agent-presets` 目录下的 standard/code/minimal/cordis）——升级会被覆盖；要改就复制成用户预设（`${DSH_HOME:-~/.dsh}/.agent-presets/`）。
 - 装完插件要重启才生效；动态插件（cordis_define 等）只活在当前进程，不属社区插件。
