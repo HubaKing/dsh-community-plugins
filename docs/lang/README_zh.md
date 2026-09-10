@@ -115,8 +115,8 @@ dsh plugin --profile web add github:HubaKing/dsh-community-plugins
 dsh plugin --profile web add https://gitee.com/HubaKing/dsh-community-plugins.git
 
 # tarball（可离线）
-curl -LO https://github.com/HubaKing/dsh-community-plugins/releases/download/v0.2.1/dsh-community-plugins-0.2.1.tgz
-dsh plugin --profile web add ./dsh-community-plugins-0.2.1.tgz
+curl -LO https://github.com/HubaKing/dsh-community-plugins/releases/download/v0.2.1/hubaking-dsh-community-plugins-0.2.1.tgz
+dsh plugin --profile web add ./hubaking-dsh-community-plugins-0.2.1.tgz
 
 # 源码 + link（开发模式，改 SKILL.md 即时生效）
 git clone https://github.com/HubaKing/dsh-community-plugins.git "${DSH_HOME:-~/.dsh}/plugins/dsh-community-plugins"

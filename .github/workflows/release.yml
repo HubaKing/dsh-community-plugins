@@ -100,10 +100,20 @@ jobs:
             - 官方文档：[打包与安装插件](https://deepseek-harness.github.io/deepseek-harness/develop/basic/publish) · [生命周期](https://deepseek-harness.github.io/deepseek-harness/develop/framework/)
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
+          # `pnpm pack` names the file after the package name with the scope
+          # folded in: @hubaking/dsh-community-plugins -> hubaking-dsh-community-plugins-<version>.tgz.
+          # Match on the version instead of hardcoding the scope, so renaming
+          # the package cannot silently produce "no matches found".
+          TARBALL=$(ls ./*-"${TAG#v}".tgz 2>/dev/null | head -n 1)
+          if [ -z "$TARBALL" ]; then
+            echo "no tarball matching *-${TAG#v}.tgz in $(pwd):" >&2
+            ls -la >&2
+            exit 1
+          fi
           gh release create "$TAG" \
             --title "$TAG" \
             --notes "$RELEASE_NOTES" \
-            "dsh-community-plugins-"*.tgz
+            "$TARBALL"
 
       # Publishes as @hubaking/dsh-community-plugins. The unscoped
       # `dsh-community-plugins` on npm belongs to a different project
