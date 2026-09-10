@@ -1,11 +1,13 @@
 ---
 name: dsh-community-plugins
-description: DeepSeek Harness 社区插件生态指南：发现社区插件（GitHub dsh-plugin topic 检索、第三方目录/市场、npm）、评估并安装它们（仓库名≠npm 包名的识别、许可证交叉核验、API 兼容性核查、安装脚本风险、dsh plugin 命令、bundle 机制、tarball、GUI），含安装提速与供应链策略。Use when the user asks to find, browse, install, update, or remove community plugins/extensions/skins/themes/skills for this harness, or asks what community plugins exist.
+description: DeepSeek Harness 社区插件生态指南：发现社区插件（GitHub dsh-plugin topic 检索、第三方目录/市场、npm）、评估与安装（仓库名≠npm 包名的识别、许可证交叉核验、API 兼容性核查、安装脚本风险、dsh plugin 命令、bundle 机制、tarball、GUI），含安装提速与供应链策略。**只提供方法与客观事实，不推荐、不排序、不背书任何第三方插件或市场，选择权交回用户**。Use when the user asks to find, browse, install, update, or remove community plugins/extensions/skins/themes/skills for this harness, or asks what community plugins exist.
 ---
 
 # DSH 社区插件：发现、评估与安装
 
 本 Harness 运行 DeepSeek Harness（dsh）。社区插件生态围绕 GitHub 的 `dsh-plugin` 话题与 npm 上的 `dsh-*` 包展开。**动手前先确认本机实际装了什么**，不假设、不绑定单一市场。
+
+> **本 skill 只提供方法与客观事实，不做任何推荐**（详见 §2「本 skill 的立场」）。用户问「用哪个」时，给出候选与逐条事实，**由用户自己评估决定**。
 
 ## 1. 先看本机已装什么
 
@@ -18,7 +20,7 @@ description: DeepSeek Harness 社区插件生态指南：发现社区插件（Gi
 - `@deepseek-ai/dsh-base` — 官方宿主核心（工具、持久化、策略等基础行）
 - `@deepseek-ai/dsh-web-app` — 官方 Web 表层（浏览器宿主、前端产物）
 
-若本机已装有市场类插件（§2 短名单中的安装器或面板），优先使用其自带工具；未安装时按 §2 渠道查找，**不主动推荐、不引导安装某个市场**——除非用户明确要求装市场。
+若本机已装有市场类插件（§2 已列出的安装器或面板），优先使用其自带工具；未安装时按 §2 渠道查找，**不主动推荐、不引导安装某个市场**——除非用户明确要求装市场。本 skill 只提供方法与客观事实，**选择权始终在用户**。
 
 ## 2. 发现渠道与市场选择
 
@@ -55,37 +57,54 @@ description: DeepSeek Harness 社区插件生态指南：发现社区插件（Gi
 
 注意仓库内可能有多个包（monorepo）：根 `package.json` 可能没有 `name` 或是总包，真正的插件包在子目录（如 `skin-manager/`、`maid-atelier/`）。此时分别读各子包 `package.json`。
 
-> 这条直接决定推荐质量：曾因按仓库名查 npm 得到 404，把一个**实际已发布、802ms 就能装完**的插件错误归类为「未发布、需 GitHub 慢装」，给出了错误对比结论。
+> 这条直接影响呈现给用户的事实是否准确：曾因按仓库名查 npm 得到 404，把一个**实际已发布、802ms 就能装完**的插件错误归类为「未发布、需 GitHub 慢装」，给出了错误对比结论。
 
-### 市场选择标准（判断力，不点名站队）
+### 本 skill 的立场：只做方法，不做推荐
 
-评估一个「插件市场」用以下标准：
+**本 skill 不推荐任何第三方插件或市场，不为任何一方背书，也不替用户排序。** 原因是这个生态里没有稳定的"最佳选择"——插件质量、维护状态、许可证、API 兼容性都在快速变化，任何排名都会很快过期并误导用户。
 
-- **热挂载 vs 重启**：装完第三方插件是否需要重启 dsh？能热挂载（如 dshmarket 的 include 子树机制）的体验远好于「每装一个重启一次」。
-- **curated vs 全量**：列表是人工策展（防 name-squatting、质量高）还是 topic 全量同步（覆盖大但噪声多）？
+**因此：**
+
+- 用户问「哪个插件好」时，**不要给排名或指名推荐**。应当：说明有哪些候选，给出下面这套**客观事实与检查项**，让用户自己判断取舍。
+- 本 skill 里出现的具体包名，**只作为「客观事实的实例」或「用于验证方法有效性的样本」**，不构成推荐。是否采用由用户决定。
+- 遇到任何第三方插件，**一律按 §3 独立核查**（危险信号、许可证、API 兼容性、活跃度），**不因为它在本文档里出现过就降低标准**。
+- 用户明确要求「帮我挑一个」时，可以列出候选并**逐条呈现事实**（形态、许可、活跃度、已知风险），但**结论必须交回用户**——说清各自的取舍，不代做选择。
+
+### 评估「插件市场/安装器」时看什么
+
+不排名，但可用以下维度逐项核查（每一项都是事实判断，不是打分）：
+
+- **生效方式**：装完第三方插件是否需要重启 dsh？支持热挂载的可免重启，不支持则每装一个都要重启一次。
+- **来源收窄程度**：列表是人工策展（可防 name-squatting）还是 topic 全量同步（覆盖大但噪声多）？
 - **闭环能力**：是否支持安装/更新/卸载/失败回滚/降级保护？
 - **agent 工具**：是否提供 market_search 类工具（agent 可直接调用）还是纯 GUI？
-- **安全审查**：安装来源是否收窄（curated registry）？网络是否只读？有无遥测？是否执行第三方脚本（需确认弹窗 + 静态扫描）？
-- **活跃度与许可证**：最近提交/发布、宽松许可（MIT/Apache/BSD）。
+- **安全审查**：网络是否只读？有无遥测？**是否执行第三方安装脚本**（是否沙箱、有无确认弹窗与静态扫描）？
+- **活跃度与许可证**：最近提交/发布、许可证类型（宽松：MIT/Apache/BSD；GPL/AGPL/未知需提示）。
 
-### 市场短名单（2026-08 静态实测结论，非背书；按需求选择）
+### 已知的市场/安装器（客观事实，非推荐）
 
-| 市场 | 定位 | 关键结论 |
+> 以下为 **2026-08 静态实测**的客观属性记录，**不构成推荐、不排序**。列出的目的是让用户知道"存在哪些选择、各自的客观差异是什么"，**采用与否由用户按上面维度自行判断**。属性会随时间变化，使用前请自行复核。
+
+| 市场/安装器 | 形态 | 客观属性（实测） |
 |---|---|---|
-| `dshmarket`（npm） | 安装器**首选** | bundle+client；**热挂载免重启**（首次装它自己需重启一次）；839 个 curated 插件（awesome-dsh-plugin.com 源）；安装/更新/卸载/回滚/降级保护齐全；纯 GUI 无 agent 工具；MIT、联网只读、无遥测 |
-| `dsh-plugin-marketplace`（github:AwesomeHou/…） | 安装器备选 | bundle+client；**装完需重启**（无热挂载）；GitHub topic 同步；4 个 agent 工具（market_search/market_install/market_installed/market_update）；monorepo 插件走 clone+构建（慢） |
-| `DSH-Plugins-Marketplace`（github:bradeGithub/…） | 全量安装器（谨慎） | bundle+client；**装完需重启**；5000+ 全量索引（CDN 分发）；**会执行第三方安装脚本**（有确认弹窗+静态扫描，非沙箱）；新项目（2026-08 创建），建议备份 profile 试用 |
-| `Oh-My-DSH` / `awesome-dsh-plugin` | 纯发现渠道 | 非安装器，只「找得到」，落地安装仍需回插件仓库或 `dsh plugin add` |
+| `dshmarket`（npm） | bundle+client | 支持热挂载（首次安装其自身需重启一次）；839 条 curated 插件（awesome-dsh-plugin.com 源）；含安装/更新/卸载/回滚/降级保护；纯 GUI、无 agent 工具；MIT、联网只读、无遥测 |
+| `dsh-plugin-marketplace`（github:AwesomeHou/…） | bundle+client | 无热挂载，装完需重启；GitHub topic 同步；提供 4 个 agent 工具（market_search/market_install/market_installed/market_update）；monorepo 插件走 clone+构建 |
+| `DSH-Plugins-Marketplace`（github:bradeGithub/…） | bundle+client | 无热挂载，装完需重启；5000+ 全量索引（CDN 分发）；**会执行第三方安装脚本**（有确认弹窗+静态扫描，非沙箱）；2026-08 创建的新项目 |
+| `Oh-My-DSH` / `awesome-dsh-plugin` | 纯发现渠道 | 非安装器，只提供检索，落地安装仍需回插件仓库或 `dsh plugin add` |
 
-### 插件短名单（非背书；按需求选择）
+### 已收录插件（客观事实，非推荐）
 
-> 与上表（市场/安装器）不同，这里列的是**单个插件**。收录门槛：已发布 npm、许可证宽松、通过 §3 危险信号检查。**收录不等于背书**——每条都标注了活跃度与已知风险，安装前仍走 §3 核查。
+> 收录门槛：已发布 npm、许可证宽松、通过 §3 危险信号检查。**收录不等于推荐、不等于背书**——每条只陈述已核实的事实与已知风险，**是否采用由用户自行评估**。
+>
+> 表格中**不写版本号**（npm latest 与仓库 main 常不同步，钉版本号必然过期，见 §3）；需要最新版用 `npm view <包名> version` 当场核实。
 
-| 插件 | 类别 | 活跃度 | 关键结论 |
+| 插件 | 类别 | 活跃度 | 已核实事实 |
 |---|---|---|---|
-| `dsh-llm-local-token`（npm） | provider / 模型路由 / 凭据 | 3 stars；2026-08 创建，活跃（最近推送 2026-09） | bundle+client；复用本机 Codex CLI 与 Claude Code 已有的 OAuth 凭据注册 `openai-codex`、`anthropic` 路由，免另配 API key（token 按请求解析、临期自动刷新，交给 dsh 自带 pi-ai 引擎）；面板读 provider 限流响应头、按计划刷新展示订阅剩余额度（含 GLM Coding Plan）；缺凭据的路由跳过而非启动失败；MIT、Node >=22.13.0、web profile、无 install 脚本；`dsh plugin --profile web add dsh-llm-local-token` 一条命令装完 |
+| `dsh-llm-local-token`（npm） | provider / 模型路由 / 凭据 | 3 stars；2026-08 创建，活跃（最近推送 2026-09） | bundle+client；读取本机 Codex CLI 与 Claude Code 已有的 OAuth 凭据，注册 `openai-codex`、`anthropic` 路由（token 按请求解析、临期自动刷新，交给 dsh 自带 pi-ai 引擎）；面板读 provider 限流响应头、按计划刷新展示订阅剩余额度（含 GLM Coding Plan）；缺凭据的路由跳过而非启动失败；MIT、Node >=22.13.0、web profile、**无 install 脚本**；安装：`dsh plugin --profile web add dsh-llm-local-token` |
 
-**⚠️ 该插件的 API 兼容风险高于皮肤/主题类**：它直接挂 LLM 引擎行，`peerDependencies` 钉在 `@deepseek-ai/dsh-llm@^0.1.0-rc.6`、`dsh-llm-pi-ai@^0.1.0-rc.6`（rc 预发布内部 API，可能随 dsh 升级变动）。安装前按 §3「API 兼容性核查」比对本机版本。另：只写 npm 包名、**不要在 skill 里钉版本号**——npm latest 与仓库 main 常不同步（实测该包 npm 为 `1.5.1` 而仓库已 `1.6.1`），钉版本号必然过期；要确认最新版用 `npm view <包名> version`。
+**本地实测记录（2026-09，dsh `0.1.5-rc.1` / Node v24.21.0 / Windows）**：安装 904ms 完成并自动进入 `dsh.profile.bundles`；供应链复验 7 个 lib 文件与 npm tarball SHA-256 全部一致；`import()` 加载正常；peer `^0.1.0-rc.6` 区间满足，`registerAdapter` / `LlmError` / `PiAiAdapter` 均存在。即"能装上且当前 API 可用"，但**这不等于它适合你的场景**。
+
+**⚠️ 该插件的 API 兼容风险高于皮肤/主题类**：它直接挂 LLM 引擎行，`peerDependencies` 钉在 `@deepseek-ai/dsh-llm@^0.1.0-rc.6`、`dsh-llm-pi-ai@^0.1.0-rc.6`（rc 预发布内部 API，可能随 dsh 升级变动）。安装前按 §3「API 兼容性核查」比对本机版本。
 
 ## 3. 评估插件（安装前必做）
 
@@ -243,6 +262,7 @@ node "<dsh 根>/apps/cli/lib/bin.js" plugin --profile web list   # 应列出该�
 
 ## 6. 约束与边界
 
+- **不做推荐**：不推荐、不排序、不背书任何第三方插件或市场（详见 §2「本 skill 的立场」）。本 skill 提到的具体包名只是客观事实实例，不构成推荐；用户问「用哪个」时给出事实与取舍，**由用户自己评估决定**。
 - 本 skill 由 `dsh-community-plugins` 插件注册提供；能读到本 skill 即说明插件已生效。
 - **不改官方 shipped preset**（部署 `agent-presets` 目录下的 standard/code/minimal/cordis）——升级会被覆盖；要改就复制成用户预设（`${DSH_HOME:-~/.dsh}/.agent-presets/`）。
 - 装完插件要重启才生效；动态插件（cordis_define 等）只活在当前进程，不属社区插件。
