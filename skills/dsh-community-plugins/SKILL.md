@@ -1,11 +1,11 @@
 ---
 name: dsh-community-plugins
-description: DeepSeek Harness 社区插件生态指南：发现（GitHub dsh-plugin topic 检索、目录/索引源、npm）、评估与安装社区插件（仓库名≠npm 包名、许可证交叉核验、API 兼容性核查、安装脚本风险、bundle 机制、tarball、GUI），含安装提速与供应链策略。只提供方法与事实，不推荐任何第三方插件或市场。Use when the user asks to find, browse, install, update, or remove community plugins/extensions/skins/themes/skills for this harness, or asks what community plugins exist.
+description: DeepSeek Harness 社区插件生态指南：发现（GitHub dsh-plugin topic 检索、目录/索引源、npm）、评估与安装社区插件（仓库名≠npm 包名、许可证交叉核验、API 兼容性核查、安装脚本风险、bundle 机制、tarball、GUI），含安装提速与供应链策略。Use when the user asks to find, browse, install, update, or remove community plugins/extensions/skins/themes/skills for this harness, or asks what community plugins exist.
 ---
 
 # DSH 社区插件：发现、评估与安装
 
-本 Harness 运行 DeepSeek Harness（dsh）。社区插件生态围绕 GitHub 的 `dsh-plugin` 话题与 npm 上的 `dsh-*` 包展开。动手前先确认本机实际装了什么，不假设、不绑定单一市场。本 skill 只提供方法与事实，不推荐任何第三方插件或市场。
+本 Harness 运行 DeepSeek Harness（dsh）。社区插件生态围绕 GitHub 的 `dsh-plugin` 话题与 npm 上的 `dsh-*` 包展开。动手前先确认本机实际装了什么，不假设、不绑定单一市场。
 
 ## 1. 先看本机已装什么
 
