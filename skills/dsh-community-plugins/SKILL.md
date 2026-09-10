@@ -29,9 +29,10 @@ description: DeepSeek Harness 社区插件生态指南：发现社区插件（Gi
 ### 发现渠道（按可靠性排序）
 
 1. **本机已装市场的工具/面板**（§1 实测为准）：如自带搜索/安装工具的可直接调用。
-2. **目录/索引源（纯发现、零执行，安全性最高）**：
-   - `Oh-My-DSH`（github:like-study1/Oh-My-DSH）— 自动同步 + 人工策展：机器可读 `data/plugins.json`（精选 1419 条，字段含 stars/language/license/pushed_at/category）与 `data/snapshot.json`（全量 1744 条），每 4 小时更新。直接抓 `https://raw.githubusercontent.com/like-study1/Oh-My-DSH/main/data/plugins.json` 做结构化检索。
-   - `awesome-dsh-plugin`（awesome-dsh-plugin.com）— 精选列表，条目标注可 `dsh plugin add` 的包，可与目录源交叉核验。
+2. **目录/索引源（只做检索，不执行任何代码）**：这类源本身不安装、不运行第三方插件，只是可检索的清单，用于**发现候选**。以下是已知的几个（**仅说明存在与用法，非推荐，使用前请自行核查其内容与时效**）：
+   - 机器可读的索引源示例：提供 `data/plugins.json` 之类的结构化清单（含 stars / language / license / pushed_at / category 字段），可直接抓取做筛选；注意其条目数为**抓取时的快照**，会随时间变化，不要当固定值。
+   - 人工策展的 awesome 列表类站点：条目标注可用 `dsh plugin add` 的包，可与机器可读索引交叉核验。
+   > 索引源的价值是**扩大候选池**，不是替你做质量判断：清单里的条目同样要按 §3 独立核查。
 3. **GitHub topic 检索（按类别找插件的主力渠道）**：用户说「帮我找一个好用的 X 类插件」时，这是命中率最高的入口——直接按 topic + 类别关键词检索，一次拿到带 stars / 推送时间的候选池，比通用 web_search 精准得多：
    ```
    https://api.github.com/search/repositories?q=topic:dsh-plugin+skin&sort=stars&per_page=30
@@ -45,19 +46,19 @@ description: DeepSeek Harness 社区插件生态指南：发现社区插件（Gi
 
 **`dsh plugin add` 用的是 `package.json` 的 `name` 字段，不是 GitHub 仓库名。二者经常完全不同**，拿仓库名去 `npm view` 会得到假 404，从而误判「未发布、只能走 GitHub 慢装」。
 
-实测三个真实差异案例（仓库名 → npm 包名）：
+常见的差异形态（**形态说明，非具体插件**——本 skill 不列举具体第三方包名）：
 
-| GitHub 仓库 | `package.json` 的 `name` | npm 查得到吗 |
+| 差异形态 | 表现 | 说明 |
 |---|---|---|
-| `WYH66666666/DSH-Transparent-UI-Plugin` | `dsh-client-ui-aqua` | ✅ 已发布 |
-| `webkubor/dsh-bloom-theme` | `@kubor/dsh-bloom-theme` | ✅ 已发布（带 scope） |
-| `NoNameLeGo/dsh-catppuccin-theme` | `@nonamelego/dsh-catppuccin` | ✅ 已发布（带 scope，且后缀不同） |
+| 名称完全不同 | 仓库名与包名毫无字面关系 | 最常见，按仓库名查 npm 必然 404 |
+| 带 npm scope | 包名形如 `@<scope>/<name>` | scope 通常与作者/组织名相关，但仍可能不同 |
+| 后缀不同 | 包名是仓库名的变体（加/减词、改后缀） | 字面接近但**不等于**仓库名，仍会 404 |
 
 **正确流程**：拉 `https://raw.githubusercontent.com/<owner>/<repo>/<branch>/package.json` → 读 `name` 字段 → 再用它查 npm。
 
-注意仓库内可能有多个包（monorepo）：根 `package.json` 可能没有 `name` 或是总包，真正的插件包在子目录（如 `skin-manager/`、`maid-atelier/`）。此时分别读各子包 `package.json`。
+注意仓库内可能有多个包（monorepo）：根 `package.json` 可能没有 `name` 或是总包，真正的插件包在子目录（常见的如 `packages/<name>/`、`plugin-<name>/`）。此时分别读各子包 `package.json`。
 
-> 这条直接影响呈现给用户的事实是否准确：曾因按仓库名查 npm 得到 404，把一个**实际已发布、802ms 就能装完**的插件错误归类为「未发布、需 GitHub 慢装」，给出了错误对比结论。
+> 这条直接影响呈现给用户的事实是否准确：曾因按仓库名查 npm 得到 404，把一个**实际已发布**的插件错误归类为「未发布、需 GitHub 慢装」，给出了错误对比结论。
 
 ### 本 skill 的立场：只做方法，不做推荐
 
@@ -83,14 +84,16 @@ description: DeepSeek Harness 社区插件生态指南：发现社区插件（Gi
 
 ### 已知的市场/安装器（客观事实，非推荐）
 
-> 以下为 **2026-08 静态实测**的客观属性记录，**不构成推荐、不排序**。列出的目的是让用户知道"存在哪些选择、各自的客观差异是什么"，**采用与否由用户按上面维度自行判断**。属性会随时间变化，使用前请自行复核。
+> 以下是**截至 2026-08 的静态实测属性**，**不构成推荐、不排序、不承诺仍然有效**。列出的唯一目的：让你知道"这类工具存在、它们之间客观差异在哪"，以便按上面的维度自行核查。**这不是完整清单**——仅列当时已知的几个；新出现的、更好的、或已废弃的都可能不在此表内。
+>
+> 属性会随时间变化（条目数、是否执行安装脚本、维护状态都会变），**使用前必须自行复核**，不要直接采信本表。
 
-| 市场/安装器 | 形态 | 客观属性（实测） |
+| 市场/安装器 | 形态 | 当时实测的客观属性 |
 |---|---|---|
-| `dshmarket`（npm） | bundle+client | 支持热挂载（首次安装其自身需重启一次）；839 条 curated 插件（awesome-dsh-plugin.com 源）；含安装/更新/卸载/回滚/降级保护；纯 GUI、无 agent 工具；MIT、联网只读、无遥测 |
-| `dsh-plugin-marketplace`（github:AwesomeHou/…） | bundle+client | 无热挂载，装完需重启；GitHub topic 同步；提供 4 个 agent 工具（market_search/market_install/market_installed/market_update）；monorepo 插件走 clone+构建 |
-| `DSH-Plugins-Marketplace`（github:bradeGithub/…） | bundle+client | 无热挂载，装完需重启；5000+ 全量索引（CDN 分发）；**会执行第三方安装脚本**（有确认弹窗+静态扫描，非沙箱）；2026-08 创建的新项目 |
-| `Oh-My-DSH` / `awesome-dsh-plugin` | 纯发现渠道 | 非安装器，只提供检索，落地安装仍需回插件仓库或 `dsh plugin add` |
+| `dshmarket`（npm） | bundle+client | 支持热挂载（首次安装其自身需重启一次）；当时索引约 839 条 curated 插件；含安装/更新/卸载/回滚/降级保护；纯 GUI、无 agent 工具；MIT、联网只读、无遥测 |
+| `dsh-plugin-marketplace`（github） | bundle+client | 无热挂载，装完需重启；GitHub topic 同步；提供 4 个 agent 工具（market_search/market_install/market_installed/market_update）；monorepo 插件走 clone+构建 |
+| `DSH-Plugins-Marketplace`（github） | bundle+client | 无热挂载，装完需重启；当时索引 5000+ 条（CDN 分发）；**会执行第三方安装脚本**（有确认弹窗+静态扫描，非沙箱）；2026-08 创建 |
+| 目录/索引类站点 | 非安装器 | 只提供检索，不安装、不执行代码；落地安装仍需回插件仓库或 `dsh plugin add` |
 
 ### 已收录插件（客观事实，非推荐）
 
@@ -136,7 +139,9 @@ description: DeepSeek Harness 社区插件生态指南：发现社区插件（Gi
 
 GitHub 的许可证识别（网页徽章与 API `license.spdx_id`）**会把仓库内 vendored 的第三方文件误判为主许可证**，实测会给出错误结论：
 
-- `WYH66666666/DSH-Transparent-UI-Plugin` → GitHub 徽章与 API 均报 **AGPL-3.0**，但仓库 `LICENSE` 全文与 npm 包 `license` 字段**都是 MIT**（该仓库内含其他协议的文件，被分类器当成了主协议）。
+- 实测某仓库：GitHub 徽章与 API 均报 **AGPL-3.0**，但仓库 `LICENSE` 全文与 npm 包 `license` 字段**都是 MIT**（该仓库内含其他协议的文件，被分类器当成了主协议）。
+
+> 该误判**不是个例**：只要仓库里带了别的协议的第三方文件（vendored 代码、字体、图标、生成物），徽章就可能指向那个文件而不是主许可证。所以**任何**仓库都必须按下面的流程交叉核验，不能只看徽章。
 
 **判定流程（必须交叉核验，不要单凭徽章下结论）**：
 
@@ -200,7 +205,7 @@ node -p "require('<dsh 根>/node_modules/@deepseek-ai/dsh-client-ui-slots/packag
 机制依据官方文档（[打包与安装插件](https://deepseek-harness.github.io/deepseek-harness/develop/basic/publish)、[生命周期](https://deepseek-harness.github.io/deepseek-harness/develop/framework/)）。先**判断安装形态**（决定怎么挂载与是否需重启）：
 
 1. **bundle 插件**（`package.json` 有 `dsh.bundle.patch`）→ `dsh plugin --profile web add <spec>` 自动进 `dsh.profile.bundles`；**装完需重启 dsh**（bundle 层启动时组合，HMR 不重载 bundle 层）。
-2. **client-only 插件**（只有 `dsh.client`，无 `dsh.bundle`）→ 不进 bundles；有热挂载能力的市场（如 dshmarket）可免重启，否则需在 profile 的 patch 层配置 `dsh.client` 行后重启生效。
+2. **client-only 插件**（只有 `dsh.client`，无 `dsh.bundle`）→ 不进 bundles；若你所用的市场/安装器**支持热挂载**则可免重启，否则需在 profile 的 patch 层配置 `dsh.client` 行后重启生效。
 3. **纯 cordis 插件**（无 `dsh.bundle` / `dsh.client`，只导出 `apply`）→ 经 profile 的 `cordis.patch.yml` 加 `- insert:` 行挂载（配置层 HMR 实时生效，通常无需重启）。
 
 标准安装命令：
