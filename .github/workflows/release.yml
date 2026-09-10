@@ -35,9 +35,11 @@ jobs:
             node --check "$file"
           done
 
-      # The suites degrade gracefully on a CI box: cross-validation against
-      # node-semver and the live-audit assertions skip when there is no dsh
-      # checkout, while the explicit assertions and the plugin contract still run.
+      # The suites are self-contained: the fixture, symbol, tar and pre-install
+      # suites build everything they need in a temp directory (the pre-install one
+      # serves a synthetic registry over loopback), so they run in full on CI. Only
+      # the cross-validation against node-semver and the live-machine assertions in
+      # audit.test.mjs degrade when there is no dsh checkout.
       - name: Test
         run: pnpm test
 
@@ -50,32 +52,33 @@ jobs:
           RELEASE_NOTES: >-
             ## dsh-community-plugins ${{ github.ref_name }}
 
-            为 DeepSeek Harness 提供社区插件生态指南的 bundle 插件：注册 `dsh-community-plugins` skill，并注册 `dsh_plugin_audit` 工具，把已装插件的 peer 区间、官方包引用、slot 契约与服务注入逐条比对到本机 dsh 构建。纯 JavaScript、单一依赖、无构建步骤、无 UI。
+            为 DeepSeek Harness 提供社区插件生态指南的 bundle 插件：注册 `dsh-community-plugins` skill，并注册两个工具，把插件与本机 dsh 构建逐条比对。纯 JavaScript、单一依赖、无构建步骤、无 UI。
 
-            ### 本版要点
+            ### 本版要点（P1 两项）
 
-            - 新增 `dsh_plugin_audit` 工具：**离线**完成兼容性核查，不联网、无遥测、不存快照
-            - 修正 skill 中 rc 预发布 semver 判定的**事实错误**：`^0.1.0-rc.5` **不匹配** `0.1.5-rc.1`
-            - 修正索引数据路径（`data/plugins/<owner>__<repo>.yml`，非 `data/plugins.json`）与 `/readme` 端点静默截断的坑
-            - 补上此前遗漏的自动化审计通道与最新市场实况
-            - `inject` 仍为 `['skills']`；没有 `tools` 服务的部署上工具静默降级，skill 始终可用
+            - **新增 `dsh_plugin_inspect` —— 安装前审计（唯一联网的工具）**：下载发布 tarball、用 registry 公布的 `integrity` 校验、解包到临时目录、判定后删除。**不安装、不写 profile、不执行 lifecycle 脚本**（`postinstall` 报成高危发现而非服从）。支持 npm 包名 / `name@range` / `github:owner/repo#ref` / http(s) tarball 直链。解包器为手写加固版：`../` 穿越、绝对路径、symlink/hardlink 条目、谎报大小的头部、解压炸弹一律拒绝并报告。另会标记仓库自带的 `install.sh` / `setup.ps1`——那类脚本绕过 `dsh plugin` 的依赖管理。
+            - **新增符号级核对**：不再只比对"包还在不在"，而是核对插件 `import` 的**具名导出**是否仍被导出。逐包递归走完声明入口的 `export *` 图（含 TypeScript 保留的 `.ts` 后缀 specifier），再与运行时入口的导出列表取并集。**只有图完整解析、且该名字在声明与运行时入口都找不到时才报 `incompatible`**；图不完整一律 `unknown` 并列出没解析到的 re-export —— "我没解析到"不等于"它没了"。
+            - **两个工具刻意分开**：离线审计承诺不联网，不提供联网开关——有条件的承诺等于没有承诺。
+            - **测试从 145 条增至 343 条**：新增 `symbols` / `tar` / `inspect` 三个套件。pre-install 工具对**本地 HTTP server** 跑端到端（不依赖 npm 在线）；符号核对在真实机器上做自洽性 oracle——279 个官方包、1874 个运行时导出名逐一核对、0 个未确认。
+            - 判定分级不变：`incompatible` / `at-risk` / `unknown` / `compatible`
+            - `inject` 仍为 `['skills']`；没有 `tools` 服务的部署上两个工具静默降级，skill 始终可用，且一个工具注册失败不会带走另一个
 
             ### 安装
 
             ```bash
-            # 方式 1：npm（推荐，纯 JS 无构建脚本）
-            dsh plugin --profile web add @hubaking/dsh-community-plugins
-
-            # 方式 2：GitHub 直装
+            # 方式 1：GitHub 直装
             dsh plugin --profile web add github:HubaKing/dsh-community-plugins
 
-            # 方式 3：tarball（可离线）
-            curl -LO https://github.com/HubaKing/dsh-community-plugins/releases/download/${{ github.ref_name }}/dsh-community-plugins-${{ github.ref_name }}.tgz
-            dsh plugin --profile web add ./dsh-community-plugins-${{ github.ref_name }}.tgz
+            # 方式 2：tarball（可离线）
+            curl -LO https://github.com/HubaKing/dsh-community-plugins/releases/download/${{ github.ref_name }}/hubaking-dsh-community-plugins-${{ github.ref_name }}.tgz
+            dsh plugin --profile web add ./hubaking-dsh-community-plugins-${{ github.ref_name }}.tgz
 
-            # 方式 4：源码 + link（开发模式，修改即时生效）
+            # 方式 3：源码 + link（开发模式，修改即时生效）
             git clone https://github.com/HubaKing/dsh-community-plugins.git "${DSH_HOME:-~/.dsh}/plugins/dsh-community-plugins"
             dsh plugin --profile web add link:"${DSH_HOME:-~/.dsh}/plugins/dsh-community-plugins"
+
+            # 方式 4：npm（本 tag 若已配置 NPM_TOKEN 则一并发布）
+            dsh plugin --profile web add @hubaking/dsh-community-plugins
             ```
 
             > `dsh` 不在 PATH 时：`node <dsh 安装根>/apps/cli/lib/bin.js plugin --profile web add <spec>`
@@ -85,14 +88,16 @@ jobs:
             ### 使用
 
             1. 安装后**重启 dsh**（bundle 层在启动时组合；改 `index.js` / `lib/` 必须重启）
-            2. 新开一个会话，`<available_skills>` 出现 `dsh-community-plugins`、工具列表出现 `dsh_plugin_audit` 即生效
-            3. 升级 dsh 前先问：「升级后我装的插件哪些会坏？」——agent 会调用 `dsh_plugin_audit` 逐条比对
+            2. 新开一个会话，`<available_skills>` 出现 `dsh-community-plugins`、工具列表出现 `dsh_plugin_audit` 与 `dsh_plugin_inspect` 即生效
+            3. 装某个包**之前**问：「这个包能装吗？」——agent 会调用 `dsh_plugin_inspect`（联网，把 tarball 拉下来审）
+            4. 已经装了的，或升级 dsh **之后**问：「我装的插件现在怎么样？」——agent 会调用 `dsh_plugin_audit`（离线）
 
             ### 验证
 
             - `${DSH_HOME:-~/.dsh}/profiles/web/package.json` 的 `dsh.profile.bundles` 含包名
             - 会话 skill 目录出现本 skill
             - `dsh_plugin_audit({})` 返回本机全部第三方插件的结论
+            - `dsh_plugin_inspect({ spec: '<某个包>' })` 返回下载、校验与判定结果，且临时目录已清空
 
             ### 文档
 

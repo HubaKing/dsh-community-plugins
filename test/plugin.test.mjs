@@ -13,7 +13,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { join } from 'node:path'
-import { apply, inject, name } from '../index.js'
+import { apply, inject, name, TOOL_NAMES } from '../index.js'
 import { resolveEnvironment } from '../lib/audit.js'
 
 let passed = 0
@@ -30,7 +30,7 @@ function check(label, condition, detail) {
 }
 
 /** A minimal stand-in for the Cordis context this plugin is applied with. */
-function makeContext({ withTools = true, toolsRegisterThrows = false, getThrows = false } = {}) {
+function makeContext({ withTools = true, toolsRegisterThrows = false, toolsRegisterThrowsFor = null, getThrows = false } = {}) {
   const calls = { providers: [], tools: [], effects: [] }
   const ctx = {
     skills: {
@@ -52,7 +52,9 @@ function makeContext({ withTools = true, toolsRegisterThrows = false, getThrows 
   if (withTools) {
     ctx.tools = {
       register(definition) {
-        if (toolsRegisterThrows) throw new TypeError('tool rejected')
+        if (toolsRegisterThrows || definition.name === toolsRegisterThrowsFor) {
+          throw new TypeError(`tool rejected: ${definition.name}`)
+        }
         calls.tools.push(definition)
         return () => {}
       },
@@ -78,8 +80,12 @@ check('apply is a function', typeof apply === 'function')
 const happy = makeContext()
 apply(happy.ctx)
 check('registers exactly one skill provider', happy.calls.providers.length === 1)
-check('registers exactly one tool', happy.calls.tools.length === 1)
-check('wires the tool registration through ctx.effect', happy.calls.effects.length === 1,
+check('registers exactly two tools (one offline, one networked)', happy.calls.tools.length === 2,
+  `tools: ${happy.calls.tools.map(tool => tool.name).join(', ')}`)
+check('the registered tool names match the exported contract',
+  JSON.stringify(happy.calls.tools.map(entry => entry.name)) === JSON.stringify(TOOL_NAMES),
+  `${happy.calls.tools.map(entry => entry.name).join(', ')} vs ${TOOL_NAMES.join(', ')}`)
+check('wires each tool registration through ctx.effect', happy.calls.effects.length === 2,
   `effects: ${happy.calls.effects.length}`)
 
 const provider = happy.calls.providers[0]?.()
@@ -87,8 +93,10 @@ check('skill provider has the expected name', provider?.name === 'dsh-community-
 check('skill provider declares list and get',
   typeof provider?.list === 'function' && typeof provider?.get === 'function')
 
-const tool = happy.calls.tools[0]
+const tool = happy.calls.tools.find(entry => entry.name === 'dsh_plugin_audit')
+const inspectTool = happy.calls.tools.find(entry => entry.name === 'dsh_plugin_inspect')
 check('tool is named dsh_plugin_audit', tool?.name === 'dsh_plugin_audit')
+check('the second tool is named dsh_plugin_inspect', inspectTool?.name === 'dsh_plugin_inspect')
 check('tool has a description', typeof tool?.description === 'string' && tool.description.length > 80)
 check('tool declares parameters', typeof tool?.parameters === 'object' && tool.parameters !== null)
 check('tool declares output.schema', typeof tool?.output?.schema === 'object')
@@ -98,6 +106,30 @@ check('tool declares a positive timeout budget',
   Number.isFinite(tool?.timeoutMs) && tool.timeoutMs > 0, `timeoutMs=${tool?.timeoutMs}`)
 check('the timeout budget is never leaked to the model',
   !Object.hasOwn(tool?.parameters ?? {}, 'timeoutMs') && !Object.hasOwn(tool?.output?.schema ?? {}, 'timeoutMs'))
+
+// The division of labour between the two tools is the point of having two: one
+// promises to stay offline, the other is the only one allowed to fetch. If the
+// descriptions stop saying which is which, an agent will pick the wrong one.
+check('the offline tool promises it fetches nothing',
+  tool.description.includes('Runs entirely offline')
+  && tool.description.includes('Nothing is fetched from the network'),
+  'the audit description no longer promises to stay offline')
+check('the offline tool names the networked sibling for pre-install checks',
+  tool.description.includes('dsh_plugin_inspect'), 'the audit description lost its pointer to the networked tool')
+check('the networked tool says so in capital letters',
+  inspectTool.description.includes('USES THE NETWORK'), 'the inspect description hides the network use')
+check('the networked tool says it never installs or runs lifecycle scripts',
+  inspectTool.description.includes('never installs') && inspectTool.description.includes('never runs the'),
+  'the inspect description lost its safety boundaries')
+check('the networked tool requires a spec', JSON.stringify(inspectTool.parameters?.required) === '["spec"]',
+  JSON.stringify(inspectTool.parameters?.required))
+check('the networked tool declares a longer timeout budget than the offline one',
+  inspectTool.timeoutMs > tool.timeoutMs, `${inspectTool.timeoutMs} vs ${tool.timeoutMs}`)
+check('the networked tool declares output.render and output.schema',
+  typeof inspectTool.output?.render === 'function' && typeof inspectTool.output?.schema === 'object')
+check('the inspect tool leaks no injected fetch implementation to the model',
+  !Object.hasOwn(inspectTool.parameters?.properties ?? {}, 'fetchImpl'),
+  JSON.stringify(Object.keys(inspectTool.parameters?.properties ?? {})))
 
 // ---------------------------------------------------------------------------
 // Graceful degradation: the skill is the core value and must never be lost
@@ -126,6 +158,21 @@ try {
 check('a rejected tool registration does not break the plugin',
   brokenThrew === null, brokenThrew?.message)
 check('skill survives a rejected tool registration', brokenRegister.calls.providers.length === 1)
+
+// One rejected tool must not take the other one down: the offline audit is the
+// fallback that still works, so losing it because the networked one failed would
+// be the worst of both worlds.
+const oneRejected = makeContext({ toolsRegisterThrowsFor: 'dsh_plugin_inspect' })
+let oneRejectedThrew = null
+try {
+  apply(oneRejected.ctx)
+} catch (error) {
+  oneRejectedThrew = error
+}
+check('a rejected registration does not stop the second tool from registering',
+  oneRejectedThrew === null && oneRejected.calls.tools.length === 1
+  && oneRejected.calls.tools[0].name === 'dsh_plugin_audit',
+  oneRejected.calls.tools.map(entry => entry.name).join(', '))
 
 const throwingGet = makeContext({ getThrows: true })
 let throwingGetThrew = null
@@ -185,19 +232,30 @@ if (validatorPath === undefined || !existsSync(validatorPath)) {
     Array.isArray(rejectsWrongType) && rejectsWrongType.length > 0, JSON.stringify(rejectsWrongType))
 
   // `register()` performs exactly these two checks on a definition.
-  let registerable = null
-  try {
-    const output = tool.output
-    const ok = output !== undefined && typeof output === 'object'
-      && typeof output.render === 'function'
-      && (output.presentationMeta === undefined || typeof output.presentationMeta === 'function')
-    if (!ok) throw new TypeError('output contract violated')
-    official.assertSupportedJsonSchema(output.schema)
-  } catch (error) {
-    registerable = error
+  for (const definition of [tool, inspectTool]) {
+    let registerable = null
+    try {
+      const output = definition.output
+      const ok = output !== undefined && typeof output === 'object'
+        && typeof output.render === 'function'
+        && (output.presentationMeta === undefined || typeof output.presentationMeta === 'function')
+      if (!ok) throw new TypeError('output contract violated')
+      official.assertSupportedJsonSchema(definition.parameters)
+      official.assertSupportedJsonSchema(output.schema)
+    } catch (error) {
+      registerable = error
+    }
+    check(`${definition.name} satisfies the two checks register() performs`,
+      registerable === null, registerable?.message)
   }
-  check('definition satisfies the two checks register() performs',
-    registerable === null, registerable?.message)
+
+  const inspectAcceptsEmpty = official.validateJsonSchemaValue(inspectTool.parameters, { spec: 'x' })
+  check('official validator accepts the inspect tool arguments',
+    Array.isArray(inspectAcceptsEmpty) && inspectAcceptsEmpty.length === 0, JSON.stringify(inspectAcceptsEmpty))
+  const inspectRejectsMissingSpec = official.validateJsonSchemaValue(inspectTool.parameters, {})
+  check('official validator rejects an inspect call with no spec',
+    Array.isArray(inspectRejectsMissingSpec) && inspectRejectsMissingSpec.length > 0,
+    JSON.stringify(inspectRejectsMissingSpec))
 }
 
 // ---------------------------------------------------------------------------
@@ -244,7 +302,16 @@ check('the skill points at the official cordis_inspect tooling',
 check('the skill states the runtime inspector\'s capability explicitly',
   skillText.includes('Slots.listSubTree'), 'SKILL.md lost the client-slot query path')
 check('the skill explains the static-vs-runtime division of labour',
-  skillText.includes('哪个会坏'), 'SKILL.md lost the "what breaks" framing')
+  skillText.includes('和本机构建对不对得上'), 'SKILL.md lost the division-of-labour framing')
+// The tool reads only the build installed here, so promising to predict a future
+// upgrade would be a lie. This guard exists because an earlier version of the
+// skill (and of the tool description) made exactly that claim.
+check('the skill never promises to predict a future upgrade',
+  skillText.includes('不预测未来') && !skillText.includes('升级前即可'),
+  'SKILL.md claims a prediction the tool cannot make')
+check('the skill documents the boot-failure layer checks',
+  skillText.includes('failed to read overlay') && skillText.includes('declares no dsh.bundle'),
+  'SKILL.md lost the guidance for a profile that will not boot')
 
 const blocks = tool.output.render({}, report)
 check('render returns content blocks',
@@ -261,6 +328,34 @@ for (const value of [undefined, null, 42, 'text', [], {}]) {
   }
   check(`render tolerates ${JSON.stringify(value) ?? 'undefined'}`, threw === null, threw?.message)
 }
+
+for (const value of [undefined, null, 42, 'text', [], {}]) {
+  let threw = null
+  try {
+    inspectTool.output.render({}, value)
+  } catch (error) {
+    threw = error
+  }
+  check(`inspect render tolerates ${JSON.stringify(value) ?? 'undefined'}`, threw === null, threw?.message)
+}
+
+// The network tool must fail closed on bad arguments: a missing spec has to come
+// back as an error report without a request ever leaving the process.
+const inspectWithoutSpec = await inspectTool.execute({}, {})
+check('the inspect tool reports a missing spec instead of fetching anything',
+  typeof inspectWithoutSpec.error === 'string' && inspectWithoutSpec.package === null,
+  JSON.stringify(inspectWithoutSpec.error))
+
+const inspectAborted = new AbortController()
+inspectAborted.abort()
+let inspectAbortThrew = null
+try {
+  await inspectTool.execute({ spec: 'anything' }, { signal: inspectAborted.signal })
+} catch (error) {
+  inspectAbortThrew = error
+}
+check('an already-aborted signal stops the networked tool before it fetches',
+  inspectAbortThrew !== null && inspectAbortThrew.name === 'AbortError', inspectAbortThrew?.name)
 
 console.log('# rendered report\n')
 console.log(tool.output.render({}, report)[0].text.split('\n').map(line => `  ${line}`).join('\n'))

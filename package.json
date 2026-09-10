@@ -1,7 +1,7 @@
 {
   "name": "@hubaking/dsh-community-plugins",
-  "version": "0.2.1",
-  "description": "DSH 社区插件生态指南 + 本机离线审计工具：注册「dsh-community-plugins」skill，让每个会话都知道如何发现、评估、安装社区插件；并注册 dsh_plugin_audit 工具，把已装插件的 peer 区间、官方包引用、slot 契约与服务注入逐条比对到本机 dsh 构建。只提供方法与事实，不推荐任何第三方插件或市场。轻量：纯 JavaScript、单一依赖、无构建步骤。",
+  "version": "0.4.0",
+  "description": "DSH 社区插件生态指南 + 两个审计工具：注册「dsh-community-plugins」skill，让每个会话都知道如何发现、评估、安装社区插件；注册离线工具 dsh_plugin_audit，把已装插件的 bundle 层完整性、peer 区间、官方包的具名导出、slot 契约与服务注入逐条比对到本机 dsh 构建；注册联网工具 dsh_plugin_inspect，在安装前下载 tarball、校验 integrity、在临时目录里审计后删除，不安装、不执行 lifecycle 脚本。只提供方法与事实，不推荐任何第三方插件或市场。轻量：纯 JavaScript、单一依赖、无构建步骤。",
   "type": "module",
   "main": "index.js",
   "repository": {
@@ -27,7 +27,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node test/semver.test.mjs && node test/audit.test.mjs && node test/plugin.test.mjs && node test/integration.test.mjs"
+    "test": "node test/semver.test.mjs && node test/symbols.test.mjs && node test/audit.test.mjs && node test/fixtures.test.mjs && node test/tar.test.mjs && node test/inspect.test.mjs && node test/plugin.test.mjs && node test/integration.test.mjs"
   },
   "keywords": [
     "dsh",
@@ -37,7 +37,9 @@
     "plugin",
     "audit",
     "compatibility",
-    "semver"
+    "semver",
+    "pre-install",
+    "supply-chain"
   ],
   "license": "MIT",
   "dependencies": {

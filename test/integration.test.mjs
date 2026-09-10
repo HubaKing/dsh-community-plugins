@@ -65,9 +65,13 @@ if (cordisPath === undefined || !existsSync(cordisPath)) {
 
   check('the plugin fiber reaches an active state', (fiber?.state ?? 0) > 0, `state ${fiber?.state}`)
   check('the skill provider is registered on the real context', seen.providers.length === 1)
-  check('the tool is registered on the real tools service', seen.tools.length === 1,
+  check('both tools are registered on the real tools service', seen.tools.length === 2,
     `registered: ${seen.tools.map(tool => tool.name).join(', ') || '(none)'}`)
-  check('the registered tool is dsh_plugin_audit', seen.tools[0]?.name === 'dsh_plugin_audit')
+  const auditTool = seen.tools.find(tool => tool.name === 'dsh_plugin_audit')
+  const inspectTool = seen.tools.find(tool => tool.name === 'dsh_plugin_inspect')
+  check('the offline audit tool is registered', auditTool !== undefined)
+  check('the networked inspect tool is registered alongside it',
+    inspectTool !== undefined && inspectTool.timeoutMs > auditTool.timeoutMs)
 
   // The regression guard: this is what the Symbol-keyed store bug broke.
   const probe = createServiceProbe(ctx)
@@ -78,17 +82,19 @@ if (cordisPath === undefined || !existsSync(cordisPath)) {
     `probe("no-such-service") returned ${String(probe('no-such-service'))}`)
 
   // The tool must run against a real context, not just a mock one.
-  const report = await seen.tools[0].execute({}, {})
+  const report = await auditTool.execute({}, {})
   check('the tool runs on a real context', typeof report?.summary === 'object')
   check('runtime service probes now resolve rather than reporting absence',
     JSON.stringify(report.plugins).includes('"present":true')
     || report.plugins.every(entry => entry.runtimeServices.length === 0),
     'expected at least one inject name resolved present')
+  check('the symbol check is part of a live audit result',
+    report.plugins.every(plugin => Array.isArray(plugin.symbols)))
 
-  // Unloading the plugin must remove the tool it added.
+  // Unloading the plugin must remove every tool it added.
   await fiber.dispose()
   await new Promise(resolve => setTimeout(resolve, 30))
-  check('unloading the plugin disposes the tool registration', seen.disposers === 1,
+  check('unloading the plugin disposes both tool registrations', seen.disposers === 2,
     `disposers called: ${seen.disposers}`)
 }
 
