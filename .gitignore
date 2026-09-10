@@ -1,4 +1,28 @@
+# Dependencies
 node_modules/
-*.log
+
+# Build and publish artifacts
 *.tgz
+dist/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Environment and credentials
+.env
+.env.*
+*.pem
+*.key
+
+# Editor and OS files
 .DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Agent scratch space (session memory, plans, temp scripts)
+.workbuddy/
+.audit/
