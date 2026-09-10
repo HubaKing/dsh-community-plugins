@@ -164,7 +164,7 @@ GitHub 的许可证识别（网页徽章与 API `license.spdx_id`）**会把仓�
   - 它们通常**手工改写 profile 的 `cordis.patch.yml`、建 junction/软链到 `node_modules`**，从而**绕过 `dsh plugin` 的依赖管理**——后续 `dsh plugin update` / `remove` 管不到它，卸载会残留
   - **优先用 `dsh plugin --profile web add <包名>`**；仅当包确实未发布到 npm 时，才考虑这类脚本，且必须**读完全文**再决定
   - 审的时候确认：是否幂等（重复跑不重复登记）、删除链接时是否 `-Recurse` 跟随（会误删目标目录）、下载源是否固定版本（跟随 `main` 分支等于每次安装内容都不同）
-  - 脚本本身逻辑规范**不等于**该用它——`DSH-Transparent-UI-Plugin` 的 `install.ps1` 写法克制、幂等、注释清楚，但 npm 包已发布，用 npm 装仍明显更优
+  - 脚本本身逻辑规范**不等于**该用它——实测有仓库的 `install.ps1` 写法克制、幂等、注释清楚，但同名的 npm 包已发布，此时用 npm 装仍明显更优（少一层绕过依赖管理的手工步骤）
 
 确认时说明发现的具体信号与风险，由用户决定是否继续。
 
