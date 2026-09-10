@@ -68,7 +68,7 @@ description: DeepSeek Harness 社区插件生态指南：发现社区插件（Gi
 - **安全审查**：安装来源是否收窄（curated registry）？网络是否只读？有无遥测？是否执行第三方脚本（需确认弹窗 + 静态扫描）？
 - **活跃度与许可证**：最近提交/发布、宽松许可（MIT/Apache/BSD）。
 
-### 短名单（2026-08 静态实测结论，非背书；按需求选择）
+### 市场短名单（2026-08 静态实测结论，非背书；按需求选择）
 
 | 市场 | 定位 | 关键结论 |
 |---|---|---|
@@ -77,11 +77,15 @@ description: DeepSeek Harness 社区插件生态指南：发现社区插件（Gi
 | `DSH-Plugins-Marketplace`（github:bradeGithub/…） | 全量安装器（谨慎） | bundle+client；**装完需重启**；5000+ 全量索引（CDN 分发）；**会执行第三方安装脚本**（有确认弹窗+静态扫描，非沙箱）；新项目（2026-08 创建），建议备份 profile 试用 |
 | `Oh-My-DSH` / `awesome-dsh-plugin` | 纯发现渠道 | 非安装器，只「找得到」，落地安装仍需回插件仓库或 `dsh plugin add` |
 
-### 单插件短名单（非背书；按需求选择）
+### 插件短名单（非背书；按需求选择）
 
-| 插件 | 类别 | 关键结论 |
-|---|---|---|
-| `dsh-llm-local-token`（npm） | provider / 模型路由 / 凭据 | bundle+client；复用本机 Codex CLI 与 Claude Code 已有的 OAuth 凭据注册 `openai-codex`、`anthropic` 路由，免另配 API key（token 按请求解析、临期自动刷新，交给 dsh 自带 pi-ai 引擎）；面板读 provider 限流响应头、按计划刷新展示订阅剩余额度（含 GLM Coding Plan）；缺凭据的路由跳过而非启动失败；MIT、Node >=22.13.0、web profile；`dsh plugin --profile web add dsh-llm-local-token` 一条命令装完 |
+> 与上表（市场/安装器）不同，这里列的是**单个插件**。收录门槛：已发布 npm、许可证宽松、通过 §3 危险信号检查。**收录不等于背书**——每条都标注了活跃度与已知风险，安装前仍走 §3 核查。
+
+| 插件 | 类别 | 活跃度 | 关键结论 |
+|---|---|---|---|
+| `dsh-llm-local-token`（npm） | provider / 模型路由 / 凭据 | 3 stars；2026-08 创建，活跃（最近推送 2026-09） | bundle+client；复用本机 Codex CLI 与 Claude Code 已有的 OAuth 凭据注册 `openai-codex`、`anthropic` 路由，免另配 API key（token 按请求解析、临期自动刷新，交给 dsh 自带 pi-ai 引擎）；面板读 provider 限流响应头、按计划刷新展示订阅剩余额度（含 GLM Coding Plan）；缺凭据的路由跳过而非启动失败；MIT、Node >=22.13.0、web profile、无 install 脚本；`dsh plugin --profile web add dsh-llm-local-token` 一条命令装完 |
+
+**⚠️ 该插件的 API 兼容风险高于皮肤/主题类**：它直接挂 LLM 引擎行，`peerDependencies` 钉在 `@deepseek-ai/dsh-llm@^0.1.0-rc.6`、`dsh-llm-pi-ai@^0.1.0-rc.6`（rc 预发布内部 API，可能随 dsh 升级变动）。安装前按 §3「API 兼容性核查」比对本机版本。另：只写 npm 包名、**不要在 skill 里钉版本号**——npm latest 与仓库 main 常不同步（实测该包 npm 为 `1.5.1` 而仓库已 `1.6.1`），钉版本号必然过期；要确认最新版用 `npm view <包名> version`。
 
 ## 3. 评估插件（安装前必做）
 
@@ -93,6 +97,21 @@ description: DeepSeek Harness 社区插件生态指南：发现社区插件（Gi
 - **活跃度** — stars 数量与最近提交时间：停更超一年且 star 少的项目谨慎采用
 - **维护者弃养声明** — 读 README 顶部：部分作者会明确写「无法及时适配新 API，崩溃请自行修理」。这不是拒绝安装的理由，但必须**告诉用户**：未来升级 dsh 后可能需自行修复或卸载
 - 用目录源（§2）检索时，直接过滤 `archived: true`、`fork: true`、许可证缺失、`pushed_at` 过老的条目
+
+### ⚠️ 写版本号必过期：npm latest ≠ 仓库 main
+
+**在 skill/文档里钉死某个插件的版本号，几乎必然写错**——npm 发布与仓库 main 是两条独立推进的线，作者常常先推代码后发 npm（或反之）：
+
+- 实测 `dsh-llm-local-token`：npm latest 为 **`1.5.1`**，但仓库 `package.json` 已是 **`1.6.1`**，且仓库 `pushed_at` 晚于该 npm 发布。
+
+**规则**：
+
+1. **描述插件时不写版本号**，只写包名（要装就 `add <包名>`，让 pnpm 解析最新版）。
+2. 需要引用版本时，**必须当场核实并标注核实日期**，例如「截至 2026-09 为 1.6.1」。
+3. 反馈两类来源不一致时，**两个都说**（如「npm 1.5.1 / 仓库 1.6.1」），不要只报一个数字当成事实。
+4. 反过来，**`dsh plugin update` 报「已最新」但 `npm view` 有新版**时，多半不是这里的问题，而是 pnpm 的 `minimumReleaseAge` 拦了（见 §4）。
+
+> 这条与「仓库名 ≠ npm 包名」是同一类错误的两面：都是**把一条线上的事实当成另一条线的结论**。
 
 ### ⚠️ 许可证判定：不要信 GitHub 的 license 徽章
 
