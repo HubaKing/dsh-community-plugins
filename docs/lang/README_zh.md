@@ -27,7 +27,11 @@ DeepSeek Harness 的插件能力通过两类机制提供：**工具（Tools）**
 
 - 注册全局 skill：所有会话的 `<available_skills>` 目录自动出现 `dsh-community-plugins`
 - 指导 agent 以实测为准识别本机已装插件（读 profile manifest，不假设、不推荐未安装的第三方插件）
-- 提供中立的发现渠道：已装市场的工具、目录/索引源（`Oh-My-DSH` 的 `data/plugins.json`、`awesome-dsh-plugin`）、GitHub `dsh-plugin` topic、npm
+- 提供中立的发现渠道：已装市场的工具、目录/索引源（`Oh-My-DSH` 的 `data/plugins.json`、`awesome-dsh-plugin`）、GitHub `dsh-plugin` topic 检索、npm
+- 规避**仓库名 ≠ npm 包名**的陷阱：指导先读 `package.json` 的 `name` 字段再查 npm（用仓库名查会得到假 404，进而误判「未发布」）
+- 指导不轻信 GitHub 的 license 徽章：改为交叉核验 LICENSE 全文与 npm `license` 字段（实测有仓库被误标 AGPL-3.0，两处实际均为 MIT）
+- 覆盖第三方 UI 插件的 API 兼容性核查：本机官方 `@deepseek-ai/*` 包的真实解析位置、rc 预发布版本 semver 语义、目标 slot 名的 grep 验证
+- 单独提示仓库自带的安装脚本风险（`install.sh` / `install.ps1`）：它们绕过 `dsh plugin` 的依赖管理，优先用 npm 形态安装
 - 提供官方安装方式与提速要点：`dsh plugin` 命令、npm-first、批量安装、按形态决定热挂载 vs 重启
 - 说明 pnpm 供应链策略（`minimumReleaseAge`）及其对策
 - 约束说明：不改官方 shipped preset、重启规则、构建授权边界
@@ -44,8 +48,8 @@ dsh plugin --profile web add github:HubaKing/dsh-community-plugins
 dsh plugin --profile web add https://gitee.com/HubaKing/dsh-community-plugins.git
 
 # tarball（可离线）
-curl -LO https://github.com/HubaKing/dsh-community-plugins/releases/download/v0.1.2/dsh-community-plugins-0.1.2.tgz
-dsh plugin --profile web add ./dsh-community-plugins-0.1.2.tgz
+curl -LO https://github.com/HubaKing/dsh-community-plugins/releases/download/v0.1.6/dsh-community-plugins-0.1.6.tgz
+dsh plugin --profile web add ./dsh-community-plugins-0.1.6.tgz
 
 # 源码 + link（开发模式，修改即时生效）
 git clone https://github.com/HubaKing/dsh-community-plugins.git "${DSH_HOME:-~/.dsh}/plugins/dsh-community-plugins"

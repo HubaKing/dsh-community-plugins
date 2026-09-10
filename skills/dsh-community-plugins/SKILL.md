@@ -1,6 +1,6 @@
 ---
 name: dsh-community-plugins
-description: DeepSeek Harness 社区插件生态指南：发现社区插件（GitHub dsh-plugin topic、第三方目录/市场、npm）、评估并安装它们（dsh plugin 命令、bundle 机制、tarball、GUI），含安装提速与供应链策略。Use when the user asks to find, browse, install, update, or remove community plugins/extensions/skins/skills for this harness, or asks what community plugins exist.
+description: DeepSeek Harness 社区插件生态指南：发现社区插件（GitHub dsh-plugin topic 检索、第三方目录/市场、npm）、评估并安装它们（仓库名≠npm 包名的识别、许可证交叉核验、API 兼容性核查、安装脚本风险、dsh plugin 命令、bundle 机制、tarball、GUI），含安装提速与供应链策略。Use when the user asks to find, browse, install, update, or remove community plugins/extensions/skins/themes/skills for this harness, or asks what community plugins exist.
 ---
 
 # DSH 社区插件：发现、评估与安装
@@ -9,7 +9,9 @@ description: DeepSeek Harness 社区插件生态指南：发现社区插件（Gi
 
 ## 1. 先看本机已装什么
 
-`${DSH_HOME:-~/.dsh}/profiles/web/package.json` 的 `dsh.profile.bundles` 列出生效的 bundle 层，`dependencies` 列出已安装的插件依赖；`node_modules` 是已下载的包；已装市场的状态目录（如 `.dsh-market/`）可能残留。**以实际读到的结果为准**，不要把文档提到的插件当作已安装。
+`${DSH_HOME:-~/.dsh}/profiles/web/package.json` 的 `dsh.profile.bundles` 列出生效的 bundle 层，`dependencies` 列出已安装的插件依赖；**以实际读到的结果为准**，不要把文档提到的插件当作已安装。
+
+关于 `node_modules`：profile 的 `node_modules` 里**只有 profile 自己安装的依赖**（含 `dsh plugin add` 装进来的社区插件），**不含官方 `@deepseek-ai/*` 包**——那些从 dsh 安装根解析（要查本机 API 版本见 §3「API 兼容性核查」）。想知道 profile 到底装了什么，也可以读 `node_modules/.modules.yaml` 的 `hoistedLocations`。
 
 官方基线（profile 模板自带，非社区插件）：
 
@@ -28,13 +30,32 @@ description: DeepSeek Harness 社区插件生态指南：发现社区插件（Gi
 2. **目录/索引源（纯发现、零执行，安全性最高）**：
    - `Oh-My-DSH`（github:like-study1/Oh-My-DSH）— 自动同步 + 人工策展：机器可读 `data/plugins.json`（精选 1419 条，字段含 stars/language/license/pushed_at/category）与 `data/snapshot.json`（全量 1744 条），每 4 小时更新。直接抓 `https://raw.githubusercontent.com/like-study1/Oh-My-DSH/main/data/plugins.json` 做结构化检索。
    - `awesome-dsh-plugin`（awesome-dsh-plugin.com）— 精选列表，条目标注可 `dsh plugin add` 的包，可与目录源交叉核验。
-3. **web_search**：搜索 GitHub `dsh-plugin` 话题与 npm 上的 `dsh-*` 包（默认渠道，任何模型可用）。
-4. **GitHub API**：
+3. **GitHub topic 检索（按类别找插件的主力渠道）**：用户说「帮我找一个好用的 X 类插件」时，这是命中率最高的入口——直接按 topic + 类别关键词检索，一次拿到带 stars / 推送时间的候选池，比通用 web_search 精准得多：
    ```
-   https://api.github.com/search/repositories?q=topic:dsh-plugin&sort=stars
+   https://api.github.com/search/repositories?q=topic:dsh-plugin+skin&sort=stars&per_page=30
    ```
+   把 `skin` 换成需求类别词（`theme` / `ui` / `memory` / `mcp` / `skill` / `tui` …）；`+theme`、`+ui` 等宽泛词候选多但噪声大，具体词（`skin`）更准。实测 `topic:dsh-plugin+skin` 出 187 个仓库、`+theme` 出 334 个、`+ui` 出 936 个。想按中文找，直接 URL 编码中文关键词（如 `topic:dsh-plugin+%E7%9A%AE%E8%82%A4`）。
    注意：部分机器 shell 直连外网被阻断（curl/git 失败），但 **Node.js https 通道通常可用**（`node -e` 内 `https.get` 可通 api.github.com），npm registry 也可达；GitHub API 未认证有时限流（403），此时换 raw.githubusercontent.com 或网页渠道。
-5. **npm**：`npm view <包名>` 查发布情况（版本、许可证、依赖）。
+4. **web_search**：搜 `dsh-plugin` 话题与 npm 上的 `dsh-*` 包（通用兜底，任何模型可用）。
+5. **npm**：`npm view <包名>` 查发布情况（版本、许可证、依赖）——**注意 `<包名>` 必须是 `package.json` 的 `name` 字段，不是仓库名**，见下节。
+
+### ⚠️ 仓库名 ≠ npm 包名（判断「是否已发布」前必读）
+
+**`dsh plugin add` 用的是 `package.json` 的 `name` 字段，不是 GitHub 仓库名。二者经常完全不同**，拿仓库名去 `npm view` 会得到假 404，从而误判「未发布、只能走 GitHub 慢装」。
+
+实测三个真实差异案例（仓库名 → npm 包名）：
+
+| GitHub 仓库 | `package.json` 的 `name` | npm 查得到吗 |
+|---|---|---|
+| `WYH66666666/DSH-Transparent-UI-Plugin` | `dsh-client-ui-aqua` | ✅ 已发布 |
+| `webkubor/dsh-bloom-theme` | `@kubor/dsh-bloom-theme` | ✅ 已发布（带 scope） |
+| `NoNameLeGo/dsh-catppuccin-theme` | `@nonamelego/dsh-catppuccin` | ✅ 已发布（带 scope，且后缀不同） |
+
+**正确流程**：拉 `https://raw.githubusercontent.com/<owner>/<repo>/<branch>/package.json` → 读 `name` 字段 → 再用它查 npm。
+
+注意仓库内可能有多个包（monorepo）：根 `package.json` 可能没有 `name` 或是总包，真正的插件包在子目录（如 `skin-manager/`、`maid-atelier/`）。此时分别读各子包 `package.json`。
+
+> 这条直接决定推荐质量：曾因按仓库名查 npm 得到 404，把一个**实际已发布、802ms 就能装完**的插件错误归类为「未发布、需 GitHub 慢装」，给出了错误对比结论。
 
 ### 市场选择标准（判断力，不点名站队）
 
@@ -64,7 +85,22 @@ description: DeepSeek Harness 社区插件生态指南：发现社区插件（Gi
 - `cordis.patch.yml` — 插入哪些行、注册什么
 - main 入口源码 — 是否执行网络请求/子进程等可疑行为
 - **活跃度** — stars 数量与最近提交时间：停更超一年且 star 少的项目谨慎采用
+- **维护者弃养声明** — 读 README 顶部：部分作者会明确写「无法及时适配新 API，崩溃请自行修理」。这不是拒绝安装的理由，但必须**告诉用户**：未来升级 dsh 后可能需自行修复或卸载
 - 用目录源（§2）检索时，直接过滤 `archived: true`、`fork: true`、许可证缺失、`pushed_at` 过老的条目
+
+### ⚠️ 许可证判定：不要信 GitHub 的 license 徽章
+
+GitHub 的许可证识别（网页徽章与 API `license.spdx_id`）**会把仓库内 vendored 的第三方文件误判为主许可证**，实测会给出错误结论：
+
+- `WYH66666666/DSH-Transparent-UI-Plugin` → GitHub 徽章与 API 均报 **AGPL-3.0**，但仓库 `LICENSE` 全文与 npm 包 `license` 字段**都是 MIT**（该仓库内含其他协议的文件，被分类器当成了主协议）。
+
+**判定流程（必须交叉核验，不要单凭徽章下结论）**：
+
+1. 读仓库 `LICENSE` **文件全文**首行（不是徽章）
+2. 读 npm 包 `package.json` 的 `license` 字段（`npm view <pkg> license`）
+3. 两者不一致时，以 LICENSE 全文 + 包内 `license` 字段为准，并在结论里说明分歧
+
+误判代价是双向的：把 MIT 误报成 AGPL 会让用户白白放弃一个合规插件；反过来漏报真正的强传染协议则更严重。**不确认就不要下许可证结论。**
 
 **危险信号清单**（任一命中 → 停下确认）：
 
@@ -75,8 +111,45 @@ description: DeepSeek Harness 社区插件生态指南：发现社区插件（Gi
 - 代码被混淆/压缩到不可读，或从远程加载并执行代码（`eval` / `Function` / 动态 import 远程 URL）
 - 许可证缺失或非宽松协议
 - 会执行第三方提供的安装脚本（`irm|iex` / `curl|bash` / 复制进 profile 后触发构建）——需用户显式确认
+- **仓库自带的独立安装脚本**（`install.sh` / `install.ps1` / `setup.*` / `deploy.*`）——这是本生态的**常见形态**，与 npm 生命周期脚本是两回事，但同样要单独审：
+  - 它们通常**手工改写 profile 的 `cordis.patch.yml`、建 junction/软链到 `node_modules`**，从而**绕过 `dsh plugin` 的依赖管理**——后续 `dsh plugin update` / `remove` 管不到它，卸载会残留
+  - **优先用 `dsh plugin --profile web add <包名>`**；仅当包确实未发布到 npm 时，才考虑这类脚本，且必须**读完全文**再决定
+  - 审的时候确认：是否幂等（重复跑不重复登记）、删除链接时是否 `-Recurse` 跟随（会误删目标目录）、下载源是否固定版本（跟随 `main` 分支等于每次安装内容都不同）
+  - 脚本本身逻辑规范**不等于**该用它——`DSH-Transparent-UI-Plugin` 的 `install.ps1` 写法克制、幂等、注释清楚，但 npm 包已发布，用 npm 装仍明显更优
 
 确认时说明发现的具体信号与风险，由用户决定是否继续。
+
+### API 兼容性核查（第三方 UI/工具插件安装前建议做）
+
+社区插件针对某个 dsh 版本区间开发，而 dsh 自身在快速迭代。**「能装上」不等于「装上能跑」**——尤其 UI 类插件（皮肤/主题/面板）会直接调用官方 client API。
+
+**关键：官方 `@deepseek-ai/*` 包不在 profile 的 `node_modules` 里。**
+
+profile 的 `node_modules` 只有「profile 自己安装的依赖」（能用 `node_modules\.modules.yaml` 的 `hoistedLocations` 确认）。官方包从 **dsh 安装根**解析，所以这样查本机 API 版本：
+
+```bash
+# 1) 本机 dsh 版本（安装根）
+node -p "require('<dsh 根>/package.json').version"
+# 2) 本机官方 client 包实际版本（安装根 node_modules，或源码仓库 packages/client/*/package.json）
+node -p "require('<dsh 根>/node_modules/@deepseek-ai/dsh-client-ui-slots/package.json').version"
+
+# 从源码仓库（development 部署）：
+#   <dsh 根>/packages/client/ui-slots/package.json 等，版本形如 0.1.5-rc.1
+```
+
+**核查步骤**：
+
+1. 读插件 `package.json` 的 `peerDependencies`（它声明支持的区间，如 `^0.1.0-rc.5`）
+2. 取本机实际版本（上面命令），**判断是否落在区间内**——注意 rc 预发布版本的 semver 语义：`^0.1.0-rc.5` 表示 `>=0.1.0-rc.5 <0.2.0-0`，因此 `0.1.5-rc.1` **是满足的**（主版本 0 且次版本 1 未变）。**不要因为版本号字面不同（rc.5 vs rc.1）就断言不兼容**
+3. **更进一步：确认它调用的具体 API 还存在**。UI 类插件常用 `ctx.slots.register` 注册设置卡片，slot 名是硬契约。在 dsh 源码里 grep 该 slot 名即可验证：
+   ```bash
+   # 插件里读到的 slot 名，例如 settings.plugin.item / settings.general.item
+   grep -rn "settings.plugin.item" <dsh 根>/packages/client --include=*.ts --include=*.tsx
+   ```
+   slot 名/契约若已被改名或移除，插件会静默失效或报错
+4. 结论要如实说：**「现在能跑，但作者已停更 N 周、且声明不跟进 API，未来升级 dsh 可能要自行修复」**——把风险讲清楚，由用户决定
+
+> pnpm 装完常报 `Issues with peer dependencies found`。若已按上面 1-3 步确认区间满足且 API 存在，这个警告可忽略，安装是成功的。
 
 ## 4. 安装插件（含提速原则）
 
@@ -89,10 +162,22 @@ description: DeepSeek Harness 社区插件生态指南：发现社区插件（Gi
 标准安装命令：
 
 ```bash
-# 安装（dsh CLI 不在 PATH 时用 node 调 <dsh 根>/apps/cli/lib/bin.js）
 dsh plugin --profile web add <spec>
 # spec 可以是：npm 包名 | github:owner/repo | 本地路径/链接 | tarball
 ```
+
+> **`dsh` 不在 PATH 时**（`Get-Command dsh` / `which dsh` 为空，实测常见）：直接用 node 调安装根的 CLI 入口，功能完全一致：
+> ```bash
+> node "<dsh 根>/apps/cli/lib/bin.js" plugin --profile web add <spec>
+> ```
+
+**装完先验证再重启**（重启前就能确认装对没有，避免重启后才发现问题）：
+
+```bash
+node "<dsh 根>/apps/cli/lib/bin.js" plugin --profile web list   # 应列出该包
+```
+
+再读 profile 的 `package.json`，确认包名已进入 `dsh.profile.bundles` 数组（bundle 插件）或 `cordis.patch.yml` 出现挂载行（纯 cordis 插件）。
 
 **提速原则**（按此顺序决策，避免慢安装）：
 
@@ -115,9 +200,21 @@ dsh plugin --profile web add <spec>
 
 ## 5. 安装后验证
 
-1. `${DSH_HOME:-~/.dsh}/profiles/web/package.json` 的 `bundles` 数组含包名（或 cordis.patch.yml 含挂载行）
-2. 重启后：skill 出现在 `<available_skills>`；工具出现在工具列表；UI 出现在设置面板
-3. 若更新无效果：按 §4 供应链策略排查 minimumReleaseAge
+**装完（重启前）**：
+
+1. `dsh plugin --profile web list` 能列出该包
+2. profile `package.json`：bundle 插件 → `dsh.profile.bundles` 数组含包名；纯 cordis 插件 → `cordis.patch.yml` 含挂载行
+3. **供应链复验（可选但推荐）**：比对落盘文件与审计过的产物是否同一份——npm 装的用 `npm pack` / registry tarball 下载解包后比 SHA-256：
+   ```bash
+   node -e "console.log(require('crypto').createHash('sha256').update(require('fs').readFileSync('<安装后路径>/lib/client.js')).digest('hex'))"
+   ```
+   哈希一致 = 审计的和装上的确实是同一个东西（排除安装环节掉包）。对来源可疑或 star 少的插件尤其值得做。
+
+**重启后**：
+
+4. skill 出现在 `<available_skills>`；工具出现在工具列表；UI 出现在设置面板
+5. 若更新无效果：按 §4 供应链策略排查 minimumReleaseAge
+6. **装完告知用户回滚路径**：安装前备份 profile 的 `package.json` / `pnpm-lock.yaml` / `cordis.patch.yml`，或直接 `dsh plugin --profile web remove <包名>`。UI 类插件出问题会导致界面异常，用户需要知道怎么退回去
 
 ## 6. 约束与边界
 

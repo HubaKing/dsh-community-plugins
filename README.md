@@ -29,7 +29,11 @@ Without this plugin, agents fall back to generic web search. With it, every new 
 
 - Registers a global skill: `dsh-community-plugins` appears in every session's `<available_skills>` catalog
 - Teaches the agent to verify what is actually installed on this machine (read the profile manifest; never assume or promote uninstalled plugins)
-- Provides neutral discovery channels: installed-market tools, directory indexes (`Oh-My-DSH` `data/plugins.json`, `awesome-dsh-plugin`), GitHub `dsh-plugin` topic, npm
+- Provides neutral discovery channels: installed-market tools, directory indexes (`Oh-My-DSH` `data/plugins.json`, `awesome-dsh-plugin`), GitHub `dsh-plugin` topic search, npm
+- Prevents the **repo-name ≠ npm-package-name** trap: shows how to read the real package name from `package.json` before querying npm (a wrong name yields a false 404 and a wrong "not published" verdict)
+- Tells the agent not to trust GitHub's license badge: verifies the LICENSE text and the npm `license` field instead (a real repo is mislabelled AGPL-3.0 while both sources say MIT)
+- Covers API-compatibility checking for third-party UI plugins: where the local official `@deepseek-ai/*` versions actually resolve from, rc-prerelease semver semantics, and grepping the target slot names
+- Flags repository-shipped installers (`install.sh` / `install.ps1`) separately from npm lifecycle scripts: they bypass `dsh plugin` dependency management, so prefer the npm form
 - Documents the official install methods plus speed-ups: `dsh plugin` command, npm-first, batch installs, hot-mount vs restart by plugin form
 - Documents the pnpm supply-chain policy (`minimumReleaseAge`) and its workarounds
 - States the constraints: no modification of official shipped presets, restart rules, build-authorization boundaries
@@ -46,8 +50,8 @@ dsh plugin --profile web add github:HubaKing/dsh-community-plugins
 dsh plugin --profile web add https://gitee.com/HubaKing/dsh-community-plugins.git
 
 # tarball (works offline)
-curl -LO https://github.com/HubaKing/dsh-community-plugins/releases/download/v0.1.2/dsh-community-plugins-0.1.2.tgz
-dsh plugin --profile web add ./dsh-community-plugins-0.1.2.tgz
+curl -LO https://github.com/HubaKing/dsh-community-plugins/releases/download/v0.1.6/dsh-community-plugins-0.1.6.tgz
+dsh plugin --profile web add ./dsh-community-plugins-0.1.6.tgz
 
 # source + link (development mode, edits take effect immediately)
 git clone https://github.com/HubaKing/dsh-community-plugins.git "${DSH_HOME:-~/.dsh}/plugins/dsh-community-plugins"
