@@ -35,7 +35,9 @@ A cached snapshot of that API surface therefore starts decaying the moment it is
 
 So this plugin stores nothing. `dsh_plugin_audit` reads the dsh install root and the profile on every call and answers for *this machine, right now*. No network, no telemetry, no data to keep fresh — and when something genuinely cannot be checked offline, it says `unknown` and gives the reason instead of guessing.
 
-This is the difference from the ~75 marketplace plugins and 3+ static auditors already in the ecosystem: they list, rank, or scan for *security*. None compare a plugin's **declared ranges and actual API usage** against **your** dsh build.
+This is the difference from the ~75 marketplace plugins, the 3+ static auditors already in the ecosystem, and even the official runtime inspector: those list, rank, scan for *security*, or describe what is live right now. None compare a plugin's **declared ranges and actual API usage** against **your** dsh build *before* you upgrade.
+
+**Complementary to the official runtime inspector.** `@deepseek-ai/dsh-tool-cordis` ships `cordis_inspect_*`, which queries the live runtime exactly (`Service.listService`, `Event.listEvents`, `Tool.listTools`, and `Slots.listSubTree` for real client-side slot props). For "what does the runtime look like right now", that is strictly the better tool. This plugin answers a different question — "which installed plugin will break" — and it still works where the inspector cannot: **a plugin that failed to load is not in the live runtime, so the inspector cannot see it at all.** Static inspection reads the disk; the inspector reads the process. Both are needed.
 
 ## The audit tool
 
@@ -92,6 +94,8 @@ The tool definition is **written by hand** as a plain object rather than built w
 
 The tool is attached through `ctx.get('tools')` rather than `inject = ['tools']`. Declaring it as a dependency would put the whole plugin — including the skill — into a `waiting` state on any deployment that composes no `tools` service. The skill must always load; the tool degrades away quietly.
 
+The tool declares a `timeoutMs` budget and actually honours it. That field is a promise rather than a decoration: dsh's contract states that declaring `timeoutMs` asserts the tool forwards `exec.signal` and can reach quiescence when the budget aborts. `execute` therefore passes the signal down into the scan, which re-checks it at every file boundary — an abort stops the work and surfaces as an `AbortError` instead of a silent overrun. (The budget is never sent to the model; `schemas()` whitelists only `name`, `description`, and `parameters`.)
+
 ### Neutrality
 
 This plugin is deliberately **not a recommendation engine**. It teaches method and reports facts; it does not rank, endorse, or recommend any third-party plugin or marketplace. Candidate plugins are presented with verifiable facts (form, license, activity, known risks) and the user makes the choice. The audit tool reports compatibility, never "better".
@@ -111,8 +115,8 @@ dsh plugin --profile web add github:HubaKing/dsh-community-plugins
 dsh plugin --profile web add https://gitee.com/HubaKing/dsh-community-plugins.git
 
 # tarball (works offline)
-curl -LO https://github.com/HubaKing/dsh-community-plugins/releases/download/v0.2.0/dsh-community-plugins-0.2.0.tgz
-dsh plugin --profile web add ./dsh-community-plugins-0.2.0.tgz
+curl -LO https://github.com/HubaKing/dsh-community-plugins/releases/download/v0.2.1/dsh-community-plugins-0.2.1.tgz
+dsh plugin --profile web add ./dsh-community-plugins-0.2.1.tgz
 
 # source + link (development mode, edits to SKILL.md take effect immediately)
 git clone https://github.com/HubaKing/dsh-community-plugins.git "${DSH_HOME:-~/.dsh}/plugins/dsh-community-plugins"

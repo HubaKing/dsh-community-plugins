@@ -117,6 +117,26 @@ console.log()
 check('self-scan completes under 3s', selfScanElapsed < 3000, `${selfScanElapsed}ms`)
 check('self-scan does not read node_modules', !selfScan.officialImports.includes('@deepseek-ai/dsh-tools'))
 
+// The scan is the slow part, so it is where a declared timeout has to bite.
+const abortedScan = new AbortController()
+abortedScan.abort()
+let scanAbortError = null
+try {
+  scanPluginSource('.', { signal: abortedScan.signal })
+} catch (error) {
+  scanAbortError = error
+}
+check('scanPluginSource honours an aborted signal', scanAbortError !== null,
+  'the scan ran to completion despite an already-aborted signal')
+check('an abort is propagated as an AbortError',
+  scanAbortError === null || scanAbortError.name === 'AbortError', scanAbortError?.name)
+
+// An unaborted signal must not change the result.
+const liveScan = scanPluginSource('.', { signal: new AbortController().signal })
+check('a live signal leaves the scan result unchanged',
+  liveScan.filesScanned === selfScan.filesScanned,
+  `${liveScan.filesScanned} vs ${selfScan.filesScanned}`)
+
 // A packed install has no source checkout, only the profile fallback. That set
 // is smaller (it omits client-only packages), so absence must be reported as a
 // risk rather than as a fact. Getting this wrong produced a confident

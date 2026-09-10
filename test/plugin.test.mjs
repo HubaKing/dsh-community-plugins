@@ -10,7 +10,7 @@
  * Run: node test/plugin.test.mjs
  */
 
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { join } from 'node:path'
 import { apply, inject, name } from '../index.js'
@@ -94,6 +94,10 @@ check('tool declares parameters', typeof tool?.parameters === 'object' && tool.p
 check('tool declares output.schema', typeof tool?.output?.schema === 'object')
 check('tool declares output.render', typeof tool?.output?.render === 'function')
 check('tool declares execute', typeof tool?.execute === 'function')
+check('tool declares a positive timeout budget',
+  Number.isFinite(tool?.timeoutMs) && tool.timeoutMs > 0, `timeoutMs=${tool?.timeoutMs}`)
+check('the timeout budget is never leaked to the model',
+  !Object.hasOwn(tool?.parameters ?? {}, 'timeoutMs') && !Object.hasOwn(tool?.output?.schema ?? {}, 'timeoutMs'))
 
 // ---------------------------------------------------------------------------
 // Graceful degradation: the skill is the core value and must never be lost
@@ -214,6 +218,33 @@ check('every plugin entry carries a verdict and evidence arrays',
 const missingTarget = await tool.execute({ target: 'this-package-does-not-exist-xyz' }, {})
 check('an unmatched target yields an empty result rather than throwing',
   missingTarget.plugins.length === 0 && missingTarget.target === null)
+
+// Declaring `timeoutMs` is a promise that the signal is honoured, so the abort
+// path must actually stop the work. A budget that cannot be enforced would be
+// a lie told to the dispatch pipeline.
+const abortedCall = new AbortController()
+abortedCall.abort()
+let abortThrew = null
+try {
+  await tool.execute({}, { signal: abortedCall.signal })
+} catch (error) {
+  abortThrew = error
+}
+check('an aborted signal stops execute instead of running to completion',
+  abortThrew !== null, 'execute completed despite an already-aborted signal')
+check('the abort surfaces as an AbortError, not a generic crash',
+  abortThrew === null || abortThrew.name === 'AbortError', abortThrew?.name)
+
+// Documentation guard. The skill is the product; if it silently loses the
+// pointer to the official runtime inspector, agents regress to static scans
+// for questions that tool already answers exactly.
+const skillText = readFileSync(join(process.cwd(), 'skills', 'dsh-community-plugins', 'SKILL.md'), 'utf8')
+check('the skill points at the official cordis_inspect tooling',
+  skillText.includes('cordis_inspect'), 'SKILL.md no longer mentions the official runtime inspector')
+check('the skill states the runtime inspector\'s capability explicitly',
+  skillText.includes('Slots.listSubTree'), 'SKILL.md lost the client-slot query path')
+check('the skill explains the static-vs-runtime division of labour',
+  skillText.includes('哪个会坏'), 'SKILL.md lost the "what breaks" framing')
 
 const blocks = tool.output.render({}, report)
 check('render returns content blocks',

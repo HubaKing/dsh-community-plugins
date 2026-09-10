@@ -35,7 +35,9 @@ DeepSeek Harness 的插件能力通过两类机制提供：**工具（Tools）**
 
 所以本插件**不存任何东西**。`dsh_plugin_audit` 每次调用都重新读 dsh 安装根与 profile，为**此刻的这台机器**作答。不联网、无遥测、没有需要保鲜的数据；确实无法离线判定时，它会如实报 `unknown` 并给出原因，而不是猜。
 
-这正是它与生态里已有的 ~75 个市场插件、3 个以上静态审计器的区别所在：那些工具做的是**陈列、排序或安全扫描**，没有一个把插件的**声明区间与实际 API 调用面**比对本机的 dsh 构建。
+这正是它与生态里已有的 ~75 个市场插件、3 个以上静态审计器、以及官方运行时探测器之间的区别：那些工具做的是**陈列、排序、安全扫描，或描述当前活体运行时**；没有一个在**升级之前**把插件的**声明区间与实际 API 调用面**比对本机的 dsh 构建。
+
+**与官方运行时探测器互补。** `@deepseek-ai/dsh-tool-cordis` 自带 `cordis_inspect_*`，它查询的是**运行时精确事实**（`Service.listService`、`Event.listEvents`、`Tool.listTools`，以及能拿到浏览器端真实 slot props 的 `Slots.listSubTree`）。问"现在运行时长什么样"，那严格来说是更好的工具。本插件回答的是另一个问题——"**哪个已装插件会坏**"——而且在探测器看不到的地方仍然有效：**加载失败的插件不在活体运行时里，探测器根本看不见它。** 静态检查读磁盘，探测器读进程，两者都需要。
 
 ## 审计工具
 
@@ -92,6 +94,8 @@ dsh_plugin_audit({ target: 'dsh-llm-local-token' })   # 只审计一个（包名
 
 工具通过 `ctx.get('tools')` 挂载，而不是 `inject = ['tools']`。声明成硬依赖会让整个插件——**包括 skill**——在任何未组合 `tools` 服务的部署上停在 `waiting` 状态。skill 必须始终可用；工具则静默降级。
 
+工具声明了 `timeoutMs` 预算，并且**真的履行它**。这个字段是承诺而非装饰：dsh 的契约规定，声明 `timeoutMs` 就等于断言该工具会转发 `exec.signal`，并能在预算中止时达到静止。因此 `execute` 会把 signal 一路传进扫描过程，扫描在每个文件边界重新检查一次——中止会真正停下工作并以 `AbortError` 报出，而不是静默超时跑完。（该预算从不发给模型：`schemas()` 只白名单 `name` / `description` / `parameters`。）
+
 ### 中立性
 
 本插件**刻意不做推荐引擎**：只提供方法与事实，不对任何第三方插件或市场排序、背书或推荐。候选插件附带可核实的事实（形态、许可、活跃度、已知风险），由用户自行选择。审计工具只报兼容性，从不评判"哪个更好"。
@@ -111,8 +115,8 @@ dsh plugin --profile web add github:HubaKing/dsh-community-plugins
 dsh plugin --profile web add https://gitee.com/HubaKing/dsh-community-plugins.git
 
 # tarball（可离线）
-curl -LO https://github.com/HubaKing/dsh-community-plugins/releases/download/v0.2.0/dsh-community-plugins-0.2.0.tgz
-dsh plugin --profile web add ./dsh-community-plugins-0.2.0.tgz
+curl -LO https://github.com/HubaKing/dsh-community-plugins/releases/download/v0.2.1/dsh-community-plugins-0.2.1.tgz
+dsh plugin --profile web add ./dsh-community-plugins-0.2.1.tgz
 
 # 源码 + link（开发模式，改 SKILL.md 即时生效）
 git clone https://github.com/HubaKing/dsh-community-plugins.git "${DSH_HOME:-~/.dsh}/plugins/dsh-community-plugins"

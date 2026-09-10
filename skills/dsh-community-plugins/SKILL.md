@@ -30,7 +30,14 @@ dsh_plugin_audit({ target: 'dsh-llm-local-token' })   # 只审计一个（包名
 - **`at-risk`** —— 声明的区间已不匹配，但代码可能仍能跑。**这是本生态的常态**：pnpm 默认不阻断 peer 不满足的安装（`strictPeerDependencies` 默认 false），所以"装上了"从来不等于"区间满足"。要不要继续用由用户判断。
 - **`unknown`** —— 需要联网或 client 侧才能确认的项（见 §3「工具做不到什么」）。
 
-工具没注册（该部署未组合 `tools` 服务）时，按下面各节人工核查，结论一致。
+**工具不在你的工具列表里？** 两种情形，原因不同，别当成"插件没装"：
+
+| 现象 | 原因 | 怎么办 |
+|---|---|---|
+| 完全没有 `dsh_plugin_audit` | 该部署未组合 `tools` 服务（`tools` 由 bundle 配置的 `- id: tools` 行装配）。未组合时本工具**静默降级**——skill 照常可用，只有工具消失 | 按下面各节人工核查，结论口径一致 |
+| 不在原生工具列表，只能经 `run_code` 调用 | 部署设了 `DSH_TOOLS_MODE=ptc`，该模式下模型只直接看到 `run_code`，其余工具经生成的 SDK 可达 | 用 `run_code` 间接调用；或改回默认 `native` |
+
+本工具声明了 30s **协作式**超时预算：超时会中止扫描（在文件边界检查取消信号）并如实报错，不会返回一份不完整的报告。工具全程不联网、不写文件、不执行被审计插件的代码。
 
 ## 1. 先看本机已装什么
 
@@ -122,12 +129,26 @@ monorepo 注意：根 `package.json` 可能无 `name` 或是总包，真正的�
 
 | 工具 | 它做什么 | 它不做什么 |
 |---|---|---|
+| **官方自带** `cordis_inspect_*`（`@deepseek-ai/dsh-tool-cordis`） | **运行时可查询真实 API 契约**：`Service.listService`、`Event.listEvents`、`Tool.listTools`，以及 `Slots.listSubTree`（能查**浏览器端真实 slot 树与 props**） | 只描述**当前活体运行时**：不读插件文件、不判 peer 区间、不预测"升级后谁会坏"；插件加载失败时它看不见那个插件 |
 | `dsh-vet`（npm） | 安装前权限与供应链审计，带 `dsh-vet/v1` 报告标准 | 不做跨版本 API 面比对 |
 | `dsh-plugin-vetting`（npm） | 静态启发式扫描：恶意模式、越权路径、未检查依赖 | 不做许可证交叉核验、不比对本机版本 |
 | `dsh-stability-audit`（npm） | 扫**已装**插件的稳定性风险：钩子面、启动任务、依赖 | 不判 peer 区间是否匹配本机 |
 | 运行时兼容垫片（`@dsh-plugin/dsh-loader` 等） | 运行时兜底，让第三方 bundle 与官方解耦 | 是**运行时**兜底，不预测"升级后谁会坏" |
 
-**它们都不做的事**（也就是 `dsh_plugin_audit` 的定位）：把插件的**声明区间 + 实际 API 调用面**与**本机 dsh 构建**做逐条比对。注意：官方明确声明 API **pre-stable**（见 §3 末），所以任何"预烘焙的兼容性数据集"都会迅速过期——这正是本工具坚持**运行时现算、不存快照**的原因。
+> ⚠️ **别把官方 `cordis_inspect_*` 忘在一边。** 它随官方 `tool-cordis` 一同提供（若本机装了 cordis 相关 bundle 就有），是**查询当前运行时真实契约的最强手段**——比任何静态扫描都准，因为它是运行时事实而非源码推断。凡是"现在这个服务/slot/工具到底长什么样"的问题，优先问它。
+
+**它们都没做的事**（也就是 `dsh_plugin_audit` 的定位）：把插件的**声明区间 + 实际 API 调用面**与**本机 dsh 构建**做逐条比对。注意：官方明确声明 API **pre-stable**（见 §3 末），所以任何"预烘焙的兼容性数据集"都会迅速过期——这正是本工具坚持**运行时现算、不存快照**的原因。
+
+**和官方 `cordis_inspect_*` 的分工**（互补，不是竞争）：
+
+| | 官方 `cordis_inspect_*` | `dsh_plugin_audit` |
+|---|---|---|
+| 回答 | 当前运行时**有什么可用** | 磁盘上的插件**哪个会坏** |
+| 时机 | 进程运行中 + 插件已加载 | **离线**，安装前 / 升级前即可 |
+| 对象 | 活体服务 / 事件 / slot / 工具 | 已装或待装插件的声明与调用面 |
+| 插件加载失败时 | **看不见它**（它不在活体里） | 能指出它缺什么 |
+
+关键差异：插件停在 `waiting`（加载失败）时，官方 inspect 帮不上忙——那个插件压根不在活体运行时里。这种"坏了但还没跑起来"的情形，用本工具。
 
 ### 已收录插件
 
@@ -228,19 +249,24 @@ node -p "require('<dsh 根>/packages/client/ui-slots/package.json').version"
 
    ⚠️ **因此：pnpm 报 `Issues with peer dependencies found` 时，它是对的。不要"忽略这个警告"。** pnpm 默认不阻断 peer 不满足的安装，所以插件能装上，但区间确实不满足——这两件事互不矛盾。
 
-3. **更进一步：确认它调用的具体 API 还存在**。UI 类插件常用 `ctx.slots.register` 注册设置卡片，slot 名是硬契约。在 dsh 源码里 grep 该 slot 名即可验证：
-   ```bash
-   # 插件里读到的 slot 名，例如 settings.plugin.item
-   grep -rn "settings.plugin.item" <dsh 根>/packages/client --include=*.ts --include=*.tsx
-   ```
+3. **更进一步：确认它调用的具体 API 还存在**。UI 类插件常用 `ctx.slots.register` 注册设置卡片，slot 名是硬契约。验证有两条路，**优先用第一条**：
+
+   - **进程正在运行** → 用官方 `cordis_inspect_query`（见 §2）：`Slots.listSubTree` 先不给 root 列出目录，再查具体 root 拿完整注册契约与 props。这是**运行时事实**，比读源码准，而且能看到浏览器端真实 slot 树——静态扫描永远看不到这一层。
+   - **离线 / 本机没装 cordis 工具** → 在 dsh 源码里 grep slot 名：
+     ```bash
+     # 插件里读到的 slot 名，例如 settings.plugin.item
+     grep -rn "settings.plugin.item" <dsh 根>/packages/client --include=*.ts --include=*.tsx
+     ```
    slot 名/契约若已被改名或移除，插件会静默失效或报错。
 4. 结论要如实说：**「现在能跑，但作者已停更 N 周、且声明不跟进 API，未来升级 dsh 可能要自行修复」**——把风险讲清楚，由用户决定。
+
+> **静态扫描 vs 运行时 inspect，怎么选**：问的是"**这个插件**的声明对不对" → 用 `dsh_plugin_audit`（离线即可，能覆盖没装/装不上的插件）；问的是"**现在运行时**某个服务/slot/工具到底长什么样" → 用官方 `cordis_inspect_*`（运行时事实，含 client 侧）。两者互不替代。
 
 ### 工具做不到什么（诚实边界）
 
 `dsh_plugin_audit` 只报它**真的能判定**的事，无法判定的会明写 `unknown`，不会猜：
 
-- **client slot 的运行时形状**：host 侧只能拿到官方源码里的 slot 名集合，拿不到浏览器端实际的 slot 树。名字对不上就是硬信号；名字对得上也不保证 props 契约没变。
+- **client slot 的运行时形状**：本工具只能读官方**源码**里的 slot 名集合，读不到浏览器端实际的 slot 树。名字对不上就是硬信号；名字对得上也不保证 props 契约没变。**但这不等于查不到**——官方 `cordis_inspect_query` 的 `Slots.listSubTree` 能在运行时拿到真实的 slot 树与 props（见 §2）。所以「某 slot 的 props 契约到底变没变」这类问题应该问官方 inspect，而不是本工具。
 - **导出的具体符号**：判定"插件 import 的 `dsh-llm` 里那个 `PiAiAdapter` 是否还在导出"需要解析官方 `.d.ts`，属更深一层，当前不做。
 - **不在本机的包**：如 `react`、外部 npm 依赖，本机查不到版本就无法判定区间。
 - **`ctx.<service>` 的静态注册表**：服务名在运行时才能确认；运行时也拿不到时会报 `unknown`。
