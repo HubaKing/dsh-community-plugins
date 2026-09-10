@@ -1,17 +1,42 @@
 ---
 name: dsh-community-plugins
-description: DeepSeek Harness 社区插件生态指南：发现（GitHub dsh-plugin topic 检索、目录/索引源、npm）、评估与安装社区插件（仓库名≠npm 包名、许可证交叉核验、API 兼容性核查、安装脚本风险、bundle 机制、tarball、GUI），含安装提速与供应链策略。Use when the user asks to find, browse, install, update, or remove community plugins/extensions/skins/themes/skills for this harness, or asks what community plugins exist.
+description: DeepSeek Harness 社区插件生态指南：发现（GitHub dsh-plugin topic 检索、策展索引、npm）、评估与安装社区插件（仓库名≠npm 包名、许可证交叉核验、peer 区间与 rc 预发布 semver 语义、slot/服务契约核查、安装脚本风险、bundle 机制、tarball），含安装提速与供应链策略。本插件同时注册 dsh_plugin_audit 工具，可离线把已装插件与本机 dsh 构建逐条比对。Use when the user asks to find, browse, install, update, or remove community plugins/extensions/skins/themes/skills for this harness, asks what community plugins exist, or asks whether upgrading dsh will break installed plugins.
 ---
 
 # DSH 社区插件：发现、评估与安装
 
 本 Harness 运行 DeepSeek Harness（dsh）。社区插件生态围绕 GitHub 的 `dsh-plugin` 话题与 npm 上的 `dsh-*` 包展开。动手前先确认本机实际装了什么，不假设、不绑定单一市场。
 
+## 0. 先用本机审计工具（若已注册）
+
+本插件注册了一个宿主工具 `dsh_plugin_audit`，它在**本机离线**完成 §3 里绝大部分静态核查，且不依赖任何预烘焙数据集——结论永远反映本机当下的 dsh 构建：
+
+| 它会告诉你 | 依据 |
+|---|---|
+| 已装插件的 `peerDependencies` 区间是否匹配本机版本 | 逐包比对，含 rc 预发布语义（§3 的关键坑） |
+| 插件 `import` 的 `@deepseek-ai/*` 包在本机是否仍存在 | 扫描安装根 `packages/` 与 `vendor/` |
+| 插件注册的 slot 名是否仍在官方源码中 | 从官方 client/core 源码提取 slot 契约 |
+| 插件 `inject` 的服务在运行时是否可解析 | 直接读当前 Cordis 上下文 |
+| 安装期风险信号 | lifecycle 脚本、动态代码、shell 执行、网络请求 |
+
+```
+dsh_plugin_audit({})                          # 审计 profile 里全部第三方插件
+dsh_plugin_audit({ target: 'dsh-llm-local-token' })   # 只审计一个（包名或目录路径）
+```
+
+判读结论：
+
+- **`incompatible`** —— 硬证据：它需要的包或 slot 在本机已不存在。
+- **`at-risk`** —— 声明的区间已不匹配，但代码可能仍能跑。**这是本生态的常态**：pnpm 默认不阻断 peer 不满足的安装（`strictPeerDependencies` 默认 false），所以"装上了"从来不等于"区间满足"。要不要继续用由用户判断。
+- **`unknown`** —— 需要联网或 client 侧才能确认的项（见 §3「工具做不到什么」）。
+
+工具没注册（该部署未组合 `tools` 服务）时，按下面各节人工核查，结论一致。
+
 ## 1. 先看本机已装什么
 
 `${DSH_HOME:-~/.dsh}/profiles/web/package.json` 的 `dsh.profile.bundles` 列出生效的 bundle 层，`dependencies` 列出已安装的插件依赖；**以实际读到的结果为准**，不要把文档提到的插件当作已安装。
 
-关于 `node_modules`：profile 的 `node_modules` 里**只有 profile 自己安装的依赖**（含 `dsh plugin add` 装进来的社区插件），**不含官方 `@deepseek-ai/*` 包**——那些从 dsh 安装根解析（要查本机 API 版本见 §3「API 兼容性核查」）。想知道 profile 到底装了什么，也可以读 `node_modules/.modules.yaml` 的 `hoistedLocations`。
+关于 `node_modules`：profile 的 `node_modules` 里**只有 profile 自己安装的依赖**（含 `dsh plugin add` 装进来的社区插件），**不含官方 `@deepseek-ai/*` 包**——那些从 dsh 安装根解析（要查本机 API 版本见 §3）。想知道 profile 到底装了什么，也可以读 `node_modules/.modules.yaml` 的 `hoistedLocations`。
 
 官方基线（profile 模板自带，非社区插件）：
 
@@ -27,15 +52,19 @@ description: DeepSeek Harness 社区插件生态指南：发现（GitHub dsh-plu
 ### 发现渠道
 
 1. **本机已装市场的工具/面板**（§1 实测为准）：自带搜索/安装工具的可直接调用。
-2. **目录/索引源**：只做检索，不安装、不执行代码。用于扩大候选池，条目仍须按 §3 核查。
-   - 机器可读索引：`data/plugins.json` 类结构化清单（含 stars / language / license / pushed_at / category），可直接抓取筛选。条目数会变化，不是固定值。
-   - awesome 列表类站点：条目标注可用 `dsh plugin add` 的包，可与机器可读索引交叉核验。
+2. **策展索引 `awesome-dsh-plugin/awesome-dsh-plugin`（CC0）**：只做检索，不安装、不执行代码。用于扩大候选池，条目仍须按 §3 核查。
+   - 权威清单在仓库 `README.md`（实测 2026-09 约 3,400 条 / 20+ 品类 / 2,200+ 独立维护者；数字会变，不是固定值）。
+   - 机器可读数据在 `data/plugins/<owner>__<repo>.yml`（每个维护者一个 YAML）+ `data/stars.json` / `data/downloads.json` / `data/added-dates.json`。
+   - ⚠️ **YAML 覆盖面小于 README 条目数**（实测 README 3,400+ 条 vs YAML 约 1,000 个文件）。要全量候选就用 README，要结构化字段就用 YAML，不要假设两者等价。
+   - ⚠️ **不要用 GitHub API 的 `/readme` 端点抓 README 做统计**——它会**静默截断**（实测只拿到一半内容，据此统计会得出错误结论）。用 `/contents/<path>` 端点、base64 解码、并校验返回的 `size`。
+   - ⚠️ YAML schema 只记录 `url / name / category / description`，**不含** license、peer 区间、安装脚本、兼容性判定——那些必须自己核（§3）。
 3. **GitHub topic 检索（按类别找插件的主力渠道）**：按 topic + 类别词检索，一次拿到带 stars / 推送时间的候选池，比通用 web_search 精准。
    ```
    https://api.github.com/search/repositories?q=topic:dsh-plugin+skin&sort=stars&per_page=30
    ```
    把 `skin` 换成类别词（`theme` / `ui` / `memory` / `mcp` / `skill` / `tui` …）。宽泛词候选多但噪声大，具体词更准。中文关键词可直接 URL 编码。
-   部分机器 shell 直连外网被阻断（curl/git 失败），此时用 Node.js https 通道（`node -e` 内 `https.get`）；GitHub API 未认证会限流（403），可换 raw.githubusercontent.com 或网页渠道。
+   ⚠️ `topic:dsh-plugin` 本身**噪声极大**（实测命中上万仓库，混入大量无关项目），必须叠加类别词或 `in:name` 收窄。
+   ⚠️ 部分机器 shell 直连外网被阻断（curl/git 失败），此时用 Node.js https 通道（`node -e` 内 `https.get`）；`raw.githubusercontent.com` 在部分网络下同样被阻断，可改用 `api.github.com` 的 `contents` 端点。GitHub API 未认证会限流（403），省着用。
 4. **web_search**：搜 `dsh-plugin` 话题与 npm 的 `dsh-*` 包（通用兜底）。
 5. **npm**：`npm view <包名>` 查版本、许可证、依赖。`<包名>` 必须是 `package.json` 的 `name`，不是仓库名（见下节）。
 
@@ -51,7 +80,7 @@ description: DeepSeek Harness 社区插件生态指南：发现（GitHub dsh-plu
 | 带 npm scope | 包名为 `@<scope>/<name>`，scope 与作者/组织名可能不同 |
 | 后缀不同 | 包名是仓库名的变体（加/减词、改后缀） |
 
-**流程**：拉 `https://raw.githubusercontent.com/<owner>/<repo>/<branch>/package.json` → 读 `name` → 用它查 npm。
+**流程**：读仓库 `package.json` 的 `name`（用 `api.github.com/repos/<owner>/<repo>/contents/package.json` 并 base64 解码）→ 用它查 npm。
 
 monorepo 注意：根 `package.json` 可能无 `name` 或是总包，真正的插件包在子目录（如 `packages/<name>/`）。此时分别读各子包 `package.json`。
 
@@ -76,16 +105,29 @@ monorepo 注意：根 `package.json` 可能无 `name` 或是总包，真正的�
 
 ### 已知市场/安装器
 
-截至 2026-08 实测，非完整清单，不构成推荐：
+截至 2026-09 实测，非完整清单，不构成推荐。该品类极度拥挤（策展索引中同类 70+ 个），下表只列有代表性的形态：
 
 | 市场/安装器 | 形态 | 属性 |
 |---|---|---|
-| `dshmarket`（npm） | bundle+client | 热挂载（自身首次安装需重启）；约 839 条 curated 索引；含安装/更新/卸载/回滚/降级保护；纯 GUI；MIT、联网只读、无遥测 |
-| `dsh-plugin-marketplace`（github） | bundle+client | 无热挂载；GitHub topic 同步；4 个 agent 工具（market_search/market_install/market_installed/market_update）；monorepo 走 clone+构建 |
-| `DSH-Plugins-Marketplace`（github） | bundle+client | 无热挂载；5000+ 索引（CDN）；执行第三方安装脚本（确认弹窗+静态扫描，非沙箱）；2026-08 创建 |
+| `dshmarket`（npm） | bundle+client | 热挂载（自身首次安装需重启）；策展索引；含安装/更新/卸载/回滚/降级保护；纯 GUI；MIT、联网只读、无遥测 |
+| `dsh-plugin`（npm） | bundle+client | 自称收录 4000+ 条；按 star 排序检索 |
+| `dsh-plugin-shop`（npm） | bundle+client | 商店形态，含 agent 工具 |
+| `dsh-find-plugin`（npm） | bundle+tool | 只做**发现**：agent 内实时 topic 检索并按 star 排序，不含安装 |
+| GitHub `*-marketplace` 类 | bundle+client | 无热挂载；topic 同步；自带 agent 工具；monorepo 走 clone+构建 |
 | 目录/索引类站点 | 非安装器 | 仅检索；安装走插件仓库或 `dsh plugin add` |
 
-表内属性会变化，使用前自行复核。
+### 已知自动化审计/检测类
+
+这类工具与 §3 人工核查**部分重叠**，遇到时先用它们，再补人工判断。同样是拥挤赛道，下面只列事实：
+
+| 工具 | 它做什么 | 它不做什么 |
+|---|---|---|
+| `dsh-vet`（npm） | 安装前权限与供应链审计，带 `dsh-vet/v1` 报告标准 | 不做跨版本 API 面比对 |
+| `dsh-plugin-vetting`（npm） | 静态启发式扫描：恶意模式、越权路径、未检查依赖 | 不做许可证交叉核验、不比对本机版本 |
+| `dsh-stability-audit`（npm） | 扫**已装**插件的稳定性风险：钩子面、启动任务、依赖 | 不判 peer 区间是否匹配本机 |
+| 运行时兼容垫片（`@dsh-plugin/dsh-loader` 等） | 运行时兜底，让第三方 bundle 与官方解耦 | 是**运行时**兜底，不预测"升级后谁会坏" |
+
+**它们都不做的事**（也就是 `dsh_plugin_audit` 的定位）：把插件的**声明区间 + 实际 API 调用面**与**本机 dsh 构建**做逐条比对。注意：官方明确声明 API **pre-stable**（见 §3 末），所以任何"预烘焙的兼容性数据集"都会迅速过期——这正是本工具坚持**运行时现算、不存快照**的原因。
 
 ### 已收录插件
 
@@ -95,9 +137,9 @@ monorepo 注意：根 `package.json` 可能无 `name` 或是总包，真正的�
 |---|---|---|---|
 | `dsh-llm-local-token`（npm） | provider / 模型路由 / 凭据 | 3 stars；2026-08 创建，最近推送 2026-09 | bundle+client；读取本机 Codex CLI 与 Claude Code 的 OAuth 凭据，注册 `openai-codex`、`anthropic` 路由（token 按请求解析、临期自动刷新，交给 dsh 自带 pi-ai 引擎）；面板读 provider 限流响应头、按计划刷新展示订阅剩余额度（含 GLM Coding Plan）；缺凭据的路由跳过而非启动失败；MIT、Node >=22.13.0、web profile、无 install 脚本。安装：`dsh plugin --profile web add dsh-llm-local-token` |
 
-**本地实测记录（2026-09，dsh `0.1.5-rc.1` / Node v24.21.0 / Windows）**：安装 904ms 完成并自动进入 `dsh.profile.bundles`；供应链复验 7 个 lib 文件与 npm tarball SHA-256 全部一致；`import()` 加载正常；peer `^0.1.0-rc.6` 区间满足，`registerAdapter` / `LlmError` / `PiAiAdapter` 均存在。即"能装上且当前 API 可用"，但**这不等于它适合你的场景**。
+**本地实测记录（2026-09，dsh `0.1.5-rc.1` / Windows）**：安装 904ms 完成并自动进入 `dsh.profile.bundles`；供应链复验 7 个 lib 文件与 npm tarball SHA-256 全部一致；`import()` 加载正常。
 
-**⚠️ 该插件的 API 兼容风险高于皮肤/主题类**：它直接挂 LLM 引擎行，`peerDependencies` 钉在 `@deepseek-ai/dsh-llm@^0.1.0-rc.6`、`dsh-llm-pi-ai@^0.1.0-rc.6`（rc 预发布内部 API，可能随 dsh 升级变动）。安装前按 §3「API 兼容性核查」比对本机版本。
+**⚠️ 但它的 `peerDependencies` 区间实际不满足**：声明 `@deepseek-ai/dsh-llm@^0.1.0-rc.6`、`dsh-llm-pi-ai@^0.1.0-rc.6`，而本机是 `0.1.5-rc.1`——按 rc semver 规则**不匹配**（见 §3）。`dsh_plugin_audit` 会把它判为 `at-risk`。代码当前可用，但它挂的是 LLM 引擎行（rc 期内部 API），升级 dsh 前必须重新核对。
 
 ## 3. 评估插件（安装前必做）
 
@@ -108,7 +150,7 @@ monorepo 注意：根 `package.json` 可能无 `name` 或是总包，真正的�
 - main 入口源码 — 是否执行网络请求/子进程等可疑行为
 - **活跃度** — stars 数量与最近提交时间：停更超一年且 star 少的项目谨慎采用
 - **维护者弃养声明** — 读 README 顶部：部分作者会明确写「无法及时适配新 API，崩溃请自行修理」。这不是拒绝安装的理由，但必须**告诉用户**：未来升级 dsh 后可能需自行修复或卸载
-- 用目录源（§2）检索时，直接过滤 `archived: true`、`fork: true`、许可证缺失、`pushed_at` 过老的条目
+- 用索引源（§2）检索时，直接过滤 `archived: true`、`fork: true`、许可证缺失、`pushed_at` 过老的条目
 
 ### ⚠️ 不写版本号：npm latest ≠ 仓库 main
 
@@ -150,6 +192,8 @@ GitHub 的许可证识别（网页徽章与 API `license.spdx_id`）会把仓库
 
 社区插件针对某个 dsh 版本区间开发，而 dsh 自身在快速迭代。**「能装上」不等于「装上能跑」**——尤其 UI 类插件（皮肤/主题/面板）会直接调用官方 client API。
 
+**先跑 `dsh_plugin_audit`**（§0），它把下面 1-3 步自动化了。需要手工复核或工具不可用时，按下列步骤做。
+
 **关键：官方 `@deepseek-ai/*` 包不在 profile 的 `node_modules` 里。**
 
 profile 的 `node_modules` 只有「profile 自己安装的依赖」（能用 `node_modules\.modules.yaml` 的 `hoistedLocations` 确认）。官方包从 **dsh 安装根**解析，所以这样查本机 API 版本：
@@ -157,26 +201,63 @@ profile 的 `node_modules` 只有「profile 自己安装的依赖」（能用 `n
 ```bash
 # 1) 本机 dsh 版本（安装根）
 node -p "require('<dsh 根>/package.json').version"
-# 2) 本机官方 client 包实际版本（安装根 node_modules，或源码仓库 packages/client/*/package.json）
-node -p "require('<dsh 根>/node_modules/@deepseek-ai/dsh-client-ui-slots/package.json').version"
-
-# 从源码仓库（development 部署）：
-#   <dsh 根>/packages/client/ui-slots/package.json 等，版本形如 0.1.5-rc.1
+# 2) 本机官方包实际版本
+#    源码部署：<dsh 根>/packages/**/package.json 与 <dsh 根>/vendor/*/package.json
+#    打包部署：<dsh 根>/node_modules/@deepseek-ai/<name>/package.json
+node -p "require('<dsh 根>/packages/client/ui-slots/package.json').version"
 ```
+
+> 注意 `vendor/`：`@deepseek-ai/cordis`、`@deepseek-ai/schemastery` 等**不在 `packages/` 而在 `vendor/`**。只扫 `packages/` 会把它们误判为「不存在」，进而把一堆正常插件误判为不兼容。
 
 **核查步骤**：
 
-1. 读插件 `package.json` 的 `peerDependencies`（它声明支持的区间，如 `^0.1.0-rc.5`）
-2. 取本机实际版本（上面命令），**判断是否落在区间内**——注意 rc 预发布版本的 semver 语义：`^0.1.0-rc.5` 表示 `>=0.1.0-rc.5 <0.2.0-0`，因此 `0.1.5-rc.1` **是满足的**（主版本 0 且次版本 1 未变）。**不要因为版本号字面不同（rc.5 vs rc.1）就断言不兼容**
+1. 读插件 `package.json` 的 `peerDependencies`（它声明支持的区间，如 `^0.1.0-rc.5`）。
+2. 取本机实际版本（上面的命令），**判断是否落在区间内**。
+
+   ⚠️ **rc 预发布有特殊语义，这是最容易判错的一步**：预发布版本**只有**在区间中某个比较器的 `major.minor.patch` 与它**完全一致**、且该比较器自身带预发布标签时才可能满足。
+
+   | 区间 | 本机版本 | 结果 |
+   |---|---|---|
+   | `^0.1.0-rc.5` | `0.1.5-rc.1` | ✗ **不满足** |
+   | `^0.1.0-rc.6` | `0.1.5-rc.1` | ✗ **不满足** |
+   | `^0.1.0-rc.5` | `0.1.0-rc.6` | ✓ 满足 |
+   | `^0.1.0-rc.5` | `0.1.5` | ✓ 满足（正式版无预发布，不受该规则限制） |
+
+   为什么：`^0.1.0-rc.5` 展开为 `>=0.1.0-rc.5 <0.2.0-0`，比较器的 tuple 是 `[0,1,0]` 与 `[0,2,0]`；而 `0.1.5-rc.1` 的 tuple 是 `[0,1,5]`——**两者都不匹配**，所以它被预发布规则挡下。`>=0.1.0-rc.5` 的上界挡不住它，下界也不挡，挡它的是这条预发布规则。
+   （上表用 npm 官方 `semver` 7.7.4 实测得出；pnpm 用的是同一套语义。）
+
+   ⚠️ **因此：pnpm 报 `Issues with peer dependencies found` 时，它是对的。不要"忽略这个警告"。** pnpm 默认不阻断 peer 不满足的安装，所以插件能装上，但区间确实不满足——这两件事互不矛盾。
+
 3. **更进一步：确认它调用的具体 API 还存在**。UI 类插件常用 `ctx.slots.register` 注册设置卡片，slot 名是硬契约。在 dsh 源码里 grep 该 slot 名即可验证：
    ```bash
-   # 插件里读到的 slot 名，例如 settings.plugin.item / settings.general.item
+   # 插件里读到的 slot 名，例如 settings.plugin.item
    grep -rn "settings.plugin.item" <dsh 根>/packages/client --include=*.ts --include=*.tsx
    ```
-   slot 名/契约若已被改名或移除，插件会静默失效或报错
-4. 结论要如实说：**「现在能跑，但作者已停更 N 周、且声明不跟进 API，未来升级 dsh 可能要自行修复」**——把风险讲清楚，由用户决定
+   slot 名/契约若已被改名或移除，插件会静默失效或报错。
+4. 结论要如实说：**「现在能跑，但作者已停更 N 周、且声明不跟进 API，未来升级 dsh 可能要自行修复」**——把风险讲清楚，由用户决定。
 
-> pnpm 装完常报 `Issues with peer dependencies found`。若已按上面 1-3 步确认区间满足且 API 存在，这个警告可忽略，安装是成功的。
+### 工具做不到什么（诚实边界）
+
+`dsh_plugin_audit` 只报它**真的能判定**的事，无法判定的会明写 `unknown`，不会猜：
+
+- **client slot 的运行时形状**：host 侧只能拿到官方源码里的 slot 名集合，拿不到浏览器端实际的 slot 树。名字对不上就是硬信号；名字对得上也不保证 props 契约没变。
+- **导出的具体符号**：判定"插件 import 的 `dsh-llm` 里那个 `PiAiAdapter` 是否还在导出"需要解析官方 `.d.ts`，属更深一层，当前不做。
+- **不在本机的包**：如 `react`、外部 npm 依赖，本机查不到版本就无法判定区间。
+- **`ctx.<service>` 的静态注册表**：服务名在运行时才能确认；运行时也拿不到时会报 `unknown`。
+- **没有 dsh 源码树时的"包缺失"判定**：此时包集合只来自 `profiles/node_modules`（dsh 启动时修复的运行时解析图），它**比源码树少**（尤其缺 client 侧包）。所以工具会把"某包不存在"降级为 `at-risk` 并注明需复核，而不是断言它被移除。有源码 checkout 时判定才是硬的。
+
+### 官方对 API 稳定性的真实态度（决定了本生态的性质）
+
+读 dsh 安装根的 `README.md` 与 `AGENTS.md`，官方是**明确声明不做稳定性承诺**的：
+
+- `README.md` — "THERE WILL BE COMPATIBILITY-BREAKING CHANGES."
+- `AGENTS.md` — "Public APIs are pre-stable; update every consumer."
+
+实践含义（实测：一个月内发布了 16 个 `0.x` 预发布，约每周一次破坏性变更）：
+
+- 任何**缓存/快照式的兼容性数据**（包括本工具不做的"预烘焙数据集"）都会迅速失真——所以核查必须**当下现算**。
+- 社区插件的 peer 区间**普遍滞后于 dsh 实际版本**，`at-risk` 是常态而非异常。
+- 因此"升级 dsh 前先跑一次核查、升完再跑一次"应成为固定动作，而不是一次性判断。
 
 ## 4. 安装插件（含提速原则）
 
@@ -231,7 +312,8 @@ node "<dsh 根>/apps/cli/lib/bin.js" plugin --profile web list   # 应列出该�
 
 1. `dsh plugin --profile web list` 能列出该包
 2. profile `package.json`：bundle 插件 → `dsh.profile.bundles` 数组含包名；纯 cordis 插件 → `cordis.patch.yml` 含挂载行
-3. **供应链复验（可选但推荐）**：比对落盘文件与审计过的产物是否同一份——npm 装的用 `npm pack` / registry tarball 下载解包后比 SHA-256：
+3. **核对兼容性**：跑 `dsh_plugin_audit({ target: '<包名>' })`，确认 verdict 与 blocker/risk 项，把风险如实告知用户
+4. **供应链复验（可选但推荐）**：比对落盘文件与审计过的产物是否同一份——npm 装的用 `npm pack` / registry tarball 下载解包后比 SHA-256：
    ```bash
    node -e "console.log(require('crypto').createHash('sha256').update(require('fs').readFileSync('<安装后路径>/lib/client.js')).digest('hex'))"
    ```
@@ -239,14 +321,15 @@ node "<dsh 根>/apps/cli/lib/bin.js" plugin --profile web list   # 应列出该�
 
 **重启后**：
 
-4. skill 出现在 `<available_skills>`；工具出现在工具列表；UI 出现在设置面板
-5. 若更新无效果：按 §4 供应链策略排查 minimumReleaseAge
-6. **装完告知用户回滚路径**：安装前备份 profile 的 `package.json` / `pnpm-lock.yaml` / `cordis.patch.yml`，或直接 `dsh plugin --profile web remove <包名>`。UI 类插件出问题会导致界面异常，用户需要知道怎么退回去
+5. skill 出现在 `<available_skills>`；工具出现在工具列表；UI 出现在设置面板
+6. 若更新无效果：按 §4 供应链策略排查 minimumReleaseAge
+7. **装完告知用户回滚路径**：安装前备份 profile 的 `package.json` / `pnpm-lock.yaml` / `cordis.patch.yml`，或直接 `dsh plugin --profile web remove <包名>`。UI 类插件出问题会导致界面异常，用户需要知道怎么退回去
 
 ## 6. 约束与边界
 
 - **不做推荐**：不推荐、不排序、不背书任何第三方插件或市场（见 §2「立场」）。本文档出现的包名仅为事实实例，不构成推荐；用户问「用哪个」时给出事实与取舍，由用户决定。
-- 本 skill 由 `dsh-community-plugins` 插件注册提供；能读到本 skill 即说明插件已生效。
+- 本 skill 与 `dsh_plugin_audit` 工具由 `dsh-community-plugins` 插件注册提供；能读到本 skill 即说明插件已生效。
 - **不改官方 shipped preset**（部署 `agent-presets` 目录下的 standard/code/minimal/cordis）——升级会被覆盖；要改就复制成用户预设（`${DSH_HOME:-~/.dsh}/.agent-presets/`）。
 - 装完插件要重启才生效；动态插件（cordis_define 等）只活在当前进程，不属社区插件。
-- 本插件源码在 `${DSH_HOME:-~/.dsh}/plugins/dsh-community-plugins/`（或克隆位置）：改 `skills/dsh-community-plugins/SKILL.md` 即时生效（`index.js` 每次发现从磁盘重读），无需重装；改动要同步到其他机器需提交到插件仓库。
+- **审计结论不是保证**：`compatible` 只表示"本工具能查的项都通过了"，不表示运行时一定无问题；`at-risk` 是常态。本工具不联网、不写文件、不执行被审计插件的任何代码。
+- 本插件源码在 `${DSH_HOME:-~/.dsh}/plugins/dsh-community-plugins/`（或克隆位置）：改 `skills/dsh-community-plugins/SKILL.md` 即时生效（每次发现从磁盘重读），无需重装；改 `lib/` 或 `index.js` **必须重启 dsh**（`cordis.patch.yml` 的 live reload 不重载模块）。

@@ -1,12 +1,15 @@
 # dsh-community-plugins
 
-> A DeepSeek Harness (dsh) plugin that registers a global **skill** teaching agents how to discover, evaluate and install **community plugins** — from the GitHub `dsh-plugin` topic, directory indexes, and npm.
+> A DeepSeek Harness (dsh) plugin that teaches agents how to discover, evaluate and install **community plugins** — and gives them one offline tool to check those plugins against the dsh build actually running on this machine.
 
 [**English**](README.md) · [**中文**](docs/lang/README_zh.md)
 
 ---
 
-This bundle adds the `dsh-community-plugins` skill to every agent session: agents learn what is actually installed on this machine, how to search the `dsh-plugin` ecosystem, how to vet a plugin before installing it, and how to install through the official `dsh plugin` mechanism (npm, GitHub, tarball, or `link:` development mode).
+This bundle adds two things to every session:
+
+1. **A skill** (`dsh-community-plugins`) — how to find plugins through the GitHub `dsh-plugin` topic, curated indexes and npm; how to vet one before installing; how to install through the official `dsh plugin` mechanism; how to verify the result.
+2. **A tool** (`dsh_plugin_audit`) — compares installed plugins against this machine's dsh build and reports, per plugin, what is broken, what is merely risky, and what could not be determined.
 
 ## Why this plugin
 
@@ -15,50 +18,87 @@ DeepSeek Harness provides plugin capabilities through two complementary mechanis
 | | Tool (e.g. `market_search`) | Skill (registered by this plugin) |
 |---|---|---|
 | Nature | Capability channel: callable functions | Context knowledge: when, why, and how to call |
-| Installed by | A marketplace plugin | This plugin |
 | Effect alone | Tool exists, but the agent does not recognize it | No marketplace interface to call |
 
-Installing a marketplace tool alone is not enough, because agent behavior is driven by context knowledge:
+A marketplace tool alone is not enough, because agent behavior is driven by context knowledge. `web_search` has an intuitive description and is any model's default approach; `market_search` is DSH-specific. Without this skill the agent does not know it exists, does not associate it with installing plugins, and does not understand the local profile layout, the bundle mechanism, the vetting workflow, or the restart requirement.
 
-- `web_search` has an intuitive description and is any model's default generic approach.
-- `market_search` is a DSH-specific tool. Without this skill, the agent does not know it exists, does not associate it with installing plugins, and does not understand the local profile layout, the bundle mechanism, the vetting workflow, or the restart requirement.
+And knowledge alone is not enough either: the ecosystem's one hard practical question — *"will upgrading dsh break what I have installed?"* — cannot be answered reliably by hand, because the rc-prerelease rule below defeats eyeballing.
 
-Without this plugin, agents fall back to generic web search. With it, every new session knows which tools are installed, which structured channels to query, how to vet sources, how to install through the official mechanism, and how to verify the result.
+## Why a live probe instead of a compatibility dataset
+
+Upstream declares the API surface unstable on purpose:
+
+- `README.md` — **"THERE WILL BE COMPATIBILITY-BREAKING CHANGES."**
+- `AGENTS.md` — **"Public APIs are pre-stable; update every consumer."**
+
+A cached snapshot of that API surface therefore starts decaying the moment it is written. Measured here: **16 `0.x` prereleases in one month** — roughly one breaking change a week. A dataset would need continuous maintenance and would be wrong between updates, and a verification tool that is confidently wrong is worse than no tool at all.
+
+So this plugin stores nothing. `dsh_plugin_audit` reads the dsh install root and the profile on every call and answers for *this machine, right now*. No network, no telemetry, no data to keep fresh — and when something genuinely cannot be checked offline, it says `unknown` and gives the reason instead of guessing.
+
+This is the difference from the ~75 marketplace plugins and 3+ static auditors already in the ecosystem: they list, rank, or scan for *security*. None compare a plugin's **declared ranges and actual API usage** against **your** dsh build.
+
+## The audit tool
+
+```
+dsh_plugin_audit({})                                  # every third-party plugin in the profile
+dsh_plugin_audit({ target: 'dsh-llm-local-token' })   # one package (name or directory)
+```
+
+Per plugin it reports:
+
+| Check | Source of truth |
+|---|---|
+| `peerDependencies` ranges satisfied? | the version of each package actually on this machine, including `vendor/` |
+| Imported `@deepseek-ai/*` packages still exist? | the dsh install root (`packages/`, `vendor/`, `node_modules/@deepseek-ai`) |
+| Registered client slots still defined? | slot contracts extracted from official `packages/client` + `packages/core` source |
+| `inject` service names resolvable? | the live Cordis context |
+| Install-time risk signals? | npm lifecycle scripts, `child_process`, `eval`, remote import, network |
+
+Verdicts are graded, not binary:
+
+| Verdict | Meaning |
+|---|---|
+| `compatible` | every check this tool can perform passed |
+| `at-risk` | a declared range no longer matches, though the code may still run — **the normal state of this ecosystem** |
+| `incompatible` | hard evidence: a package or slot it needs is gone from this build |
+| `unknown` | something needed a check that cannot be done offline; the reason is always stated |
+
+### The rc-prerelease trap this exists to catch
+
+`^0.1.0-rc.5` expands to `>=0.1.0-rc.5 <0.2.0-0`. Does it match `0.1.5-rc.1`?
+
+**No.** A prerelease only satisfies a range when some comparator pins the *same* `major.minor.patch` and is itself a prerelease. The comparators are `[0,1,0]` and `[0,2,0]`; the version is `[0,1,5]`. Neither matches, so the prerelease rule rejects it.
+
+| Range | Version | Result |
+|---|---|---|
+| `^0.1.0-rc.5` | `0.1.5-rc.1` | ✗ not satisfied |
+| `^0.1.0-rc.6` | `0.1.5-rc.1` | ✗ not satisfied |
+| `^0.1.0-rc.5` | `0.1.0-rc.6` | ✓ satisfied |
+| `^0.1.0-rc.5` | `0.1.5` | ✓ satisfied |
+
+Verified against npm's own `semver` 7.7.4. This matters because pnpm does **not** block installs on unsatisfied peers by default — so "it installed" has never meant "the range matches", and the `Issues with peer dependencies found` warning is telling the truth.
 
 ## Positioning: lightweight by design
-
-This is a **knowledge-only** plugin. It ships no runtime service, no client bundle, and no build step.
 
 | Property | Value |
 |---|---|
 | Runtime dependencies | 1 (`yaml`, used only to parse the bundle patch) |
 | Build step | None — plain JavaScript, no `prepare` script, no `allowBuilds` authorization |
-| Plugin form | bundle only (`dsh.bundle.patch`); no `dsh.client`, no UI surface |
-| Tracked files | 9 |
-| Repository size | ~49 KB |
+| Plugin form | bundle + one host tool; no `dsh.client`, no UI surface |
+| Network / telemetry | None in the tool; it reads local files only |
+| Tracked files | 17 (source, tests, docs) |
 
-Because it is a single bundle layer with no client half, installing it does not add a UI, does not touch the model or request path, and does not require build authorization — the gate TypeScript plugins hit.
+The tool definition is **written by hand** as a plain object rather than built with `defineTool` from `@deepseek-ai/dsh-tools`. `ctx.tools.register` only requires `{ name, description, parameters, output: { schema, render }, execute }` — a plain object cannot break when upstream renames or moves an exported symbol, which the "pre-stable" policy says will happen. The test suite proves the shape is acceptable by running it through **dsh's own `assertSupportedJsonSchema` and `validateJsonSchemaValue`**.
+
+The tool is attached through `ctx.get('tools')` rather than `inject = ['tools']`. Declaring it as a dependency would put the whole plugin — including the skill — into a `waiting` state on any deployment that composes no `tools` service. The skill must always load; the tool degrades away quietly.
 
 ### Neutrality
 
-This skill is deliberately **not a recommendation engine**. It teaches method and reports facts; it does not rank, endorse, or recommend any third-party plugin or marketplace. Candidate plugins are presented with verifiable facts (form, license, activity, known risks) and the user makes the choice.
-
-## Features
-
-- Registers a global skill: `dsh-community-plugins` appears in every session's `<available_skills>` catalog
-- Teaches the agent to verify what is actually installed on this machine (read the profile manifest; never assume)
-- Provides neutral discovery channels: installed tooling, directory/index sources, GitHub `dsh-plugin` topic search, npm
-- Prevents the **repo-name ≠ npm-package-name** trap: read the real package name from `package.json` before querying npm (a wrong name yields a false 404 and a wrong "not published" verdict)
-- Tells the agent not to trust GitHub's license badge: cross-check the `LICENSE` text against the npm `license` field instead
-- Covers API-compatibility checking for third-party plugins: where local `@deepseek-ai/*` versions resolve from, rc-prerelease semver semantics, and verifying that the APIs a plugin calls still exist
-- Flags repository-shipped installers (`install.sh` / `install.ps1`) separately from npm lifecycle scripts: they bypass `dsh plugin` dependency management, so the npm form is preferred
-- Documents the official install methods plus speed-ups: `dsh plugin` usage, npm-first, batch installs, and hot-mount vs restart by plugin form
-- Documents the pnpm supply-chain policy (`minimumReleaseAge`) and its workarounds
-- States the constraints: no modification of official shipped presets, restart rules, build-authorization boundaries
+This plugin is deliberately **not a recommendation engine**. It teaches method and reports facts; it does not rank, endorse, or recommend any third-party plugin or marketplace. Candidate plugins are presented with verifiable facts (form, license, activity, known risks) and the user makes the choice. The audit tool reports compatibility, never "better".
 
 ## Install
 
-Prerequisite: the dsh CLI (or invoke `apps/cli/lib/bin.js` from the dsh install root). Choose one of the following:
+Prerequisite: the dsh CLI (or invoke `apps/cli/lib/bin.js` from the dsh install root).
 
 ```bash
 # npm (recommended: no clone, no build)
@@ -71,17 +111,17 @@ dsh plugin --profile web add github:HubaKing/dsh-community-plugins
 dsh plugin --profile web add https://gitee.com/HubaKing/dsh-community-plugins.git
 
 # tarball (works offline)
-curl -LO https://github.com/HubaKing/dsh-community-plugins/releases/download/v0.1.6/dsh-community-plugins-0.1.6.tgz
-dsh plugin --profile web add ./dsh-community-plugins-0.1.6.tgz
+curl -LO https://github.com/HubaKing/dsh-community-plugins/releases/download/v0.2.0/dsh-community-plugins-0.2.0.tgz
+dsh plugin --profile web add ./dsh-community-plugins-0.2.0.tgz
 
-# source + link (development mode, edits take effect immediately)
+# source + link (development mode, edits to SKILL.md take effect immediately)
 git clone https://github.com/HubaKing/dsh-community-plugins.git "${DSH_HOME:-~/.dsh}/plugins/dsh-community-plugins"
 dsh plugin --profile web add link:${DSH_HOME:-~/.dsh}/plugins/dsh-community-plugins
 ```
 
-**Restart dsh after installing** (bundle layers are composed at startup). Installation succeeds when `dsh-community-plugins` appears in `<available_skills>` of a new session.
+**Restart dsh after installing** (bundle layers are composed at startup). Installation succeeds when `dsh-community-plugins` appears in `<available_skills>` and `dsh_plugin_audit` in the tool list.
 
-> ⚠️ **Always use the `@hubaking/` scope for the npm form.** The unscoped name `dsh-community-plugins` on npm belongs to a **different project** ([`funcodingdev/dsh-community-plugins`](https://github.com/funcodingdev/dsh-community-plugins), TypeScript, with build scripts), so `dsh plugin add dsh-community-plugins` silently installs that other package. This repository publishes as `@hubaking/dsh-community-plugins`.
+> ⚠️ **Always use the `@hubaking/` scope for the npm form.** The unscoped name `dsh-community-plugins` on npm belongs to a **different project** ([`funcodingdev/dsh-community-plugins`](https://github.com/funcodingdev/dsh-community-plugins), TypeScript, with build scripts), so `dsh plugin add dsh-community-plugins` silently installs that other package.
 
 > When `dsh` is not on PATH, use `node <dsh install root>/apps/cli/lib/bin.js plugin --profile web add <spec>`.
 
@@ -89,51 +129,56 @@ dsh plugin --profile web add link:${DSH_HOME:-~/.dsh}/plugins/dsh-community-plug
 
 | File | Responsibility |
 |---|---|
-| `index.js` | Plugin entry: registers the `skills/` directory into the global `ctx.skills` registry |
+| `index.js` | Plugin entry: registers the skill provider, then attaches the tool via `ctx.get('tools')` |
+| `lib/skills.js` | Parses `skills/<name>/SKILL.md` bundles and registers them on `ctx.skills` |
+| `lib/tool.js` | The hand-written tool definition and the human-readable report renderer |
+| `lib/audit.js` | Locates the dsh root and profile, scans plugins, produces verdicts |
+| `lib/semver.js` | Dependency-free semver matching aligned with node-semver, including prerelease rules |
 | `cordis.patch.yml` | Bundle patch layer: the `- insert:` row mounts the plugin at profile startup |
-| `skills/dsh-community-plugins/SKILL.md` | The skill body the agent reads |
-| `package.json` | Declares the `dsh.bundle.patch` manifest |
 
-Key points:
+## Development
 
-- **Plain JavaScript, no build scripts**: single dependency `yaml`; GitHub direct install needs no `prepare` script or `allowBuilds` authorization (the build gate for TypeScript plugins, per the official docs)
-- **Hot update**: `index.js` re-reads from disk on every discovery; editing `SKILL.md` requires no restart or reinstall
-- **Official plugin shape**: function form `export const name` + `export function apply(ctx)` + `dsh.bundle` manifest
+```bash
+npm install      # only `yaml`
+npm test         # semver cross-validation + live audit + plugin contract
+```
 
-## Modifying the skill content
+The suites are designed to be useful on any machine:
 
-Edit `skills/dsh-community-plugins/SKILL.md`; changes take effect on save, then `git push` to share with other users.
+- `test/semver.test.mjs` — cross-validates `lib/semver.js` against npm's `semver` when one is reachable (930 range/version pairs and 900 ordering pairs, currently zero mismatches, plus 36 explicit assertions).
+- `test/audit.test.mjs` — runs the audit against this machine's real installation and prints the report; machine-specific values are printed, never asserted.
+- `test/plugin.test.mjs` — exercises the `apply` contract, all graceful-degradation paths, and validates the hand-written tool definition with dsh's own schema validators.
 
 ## Layout
 
 ```
 dsh-community-plugins/
-├── index.js              # Plugin entry (skill registration)
-├── cordis.patch.yml      # Bundle patch layer
-├── package.json          # dsh.bundle manifest
-├── README.md             # English
-├── docs/
-│   └── lang/
-│       └── README_zh.md  # 中文
-└── skills/
-    └── dsh-community-plugins/
-        └── SKILL.md      # The guide read by agents
+├── index.js                  # Plugin entry
+├── lib/
+│   ├── audit.js              # Environment probe + verdicts
+│   ├── semver.js             # rc-aware range matching (no deps)
+│   ├── skills.js             # SKILL.md provider
+│   └── tool.js               # Tool definition + report renderer
+├── test/                     # Node-native tests, no framework
+├── cordis.patch.yml          # Bundle patch layer
+├── package.json              # dsh.bundle manifest
+├── README.md                 # English
+├── docs/lang/README_zh.md    # 中文
+└── skills/dsh-community-plugins/SKILL.md
 ```
+
+## Modifying the skill content
+
+Edit `skills/dsh-community-plugins/SKILL.md`; changes take effect on save (the provider re-reads from disk on every discovery), then `git push` to share. Changes to `index.js` or `lib/` require a dsh restart — `patchReload: live` re-reads `cordis.patch.yml` only and does not replace source modules.
 
 ## Related docs
 
 - [DeepSeek Harness official repository](https://github.com/deepseek-ai/deepseek-harness)
 - [Official docs (English)](https://deepseek-harness.github.io/deepseek-harness/en/)
 - [Official docs (简体中文)](https://deepseek-harness.github.io/deepseek-harness/)
-- [Quickstart (Web UI)](https://deepseek-harness.github.io/deepseek-harness/guide/quickstart)
-- [First plugin](https://deepseek-harness.github.io/deepseek-harness/develop/basic/) — plugin shape, `apply`/`inject`, lifecycle
-- [Packaging and installing plugins](https://deepseek-harness.github.io/deepseek-harness/develop/basic/publish) — bundle manifest, profile install, build authorization
-- [Plugin configuration](https://deepseek-harness.github.io/deepseek-harness/develop/basic/config) — Config/Schema conventions
-- [Plugins and lifecycle](https://deepseek-harness.github.io/deepseek-harness/develop/framework/) — Fiber state machine and automatic cleanup
-- [Event system](https://deepseek-harness.github.io/deepseek-harness/develop/framework/events) — event modes and naming conventions
-- [Run from source (root README)](https://github.com/deepseek-ai/deepseek-harness/blob/master/README.md#run-from-source) — build and launch from source
-- [Source execution (CLI reference)](https://github.com/deepseek-ai/deepseek-harness/blob/master/apps/cli/reference/README.md#source-execution) — build and launcher behavior
-- [GitHub `dsh-plugin` topic](https://github.com/topics/dsh-plugin) — community plugin aggregation
+- [Packaging and installing plugins](https://deepseek-harness.github.io/deepseek-harness/develop/basic/publish)
+- [Plugins and lifecycle](https://deepseek-harness.github.io/deepseek-harness/develop/framework/)
+- [GitHub `dsh-plugin` topic](https://github.com/topics/dsh-plugin)
 
 ## License
 

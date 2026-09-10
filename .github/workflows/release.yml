@@ -26,8 +26,20 @@ jobs:
         with:
           version: 9
 
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile --ignore-scripts
+
       - name: Syntax check
-        run: node --check index.js
+        run: |
+          for file in index.js lib/*.js; do
+            node --check "$file"
+          done
+
+      # The suites degrade gracefully on a CI box: cross-validation against
+      # node-semver and the live-audit assertions skip when there is no dsh
+      # checkout, while the explicit assertions and the plugin contract still run.
+      - name: Test
+        run: pnpm test
 
       - name: Pack tarball
         run: pnpm pack
@@ -38,7 +50,15 @@ jobs:
           RELEASE_NOTES: >-
             ## dsh-community-plugins ${{ github.ref_name }}
 
-            为 DeepSeek Harness 提供社区插件生态指南的 bundle 插件：注册 `dsh-community-plugins` skill，使 agent 具备发现、评估、安装社区插件的能力。纯知识插件，仅单个 bundle 层、单一依赖、无构建步骤、无 UI。
+            为 DeepSeek Harness 提供社区插件生态指南的 bundle 插件：注册 `dsh-community-plugins` skill，并注册 `dsh_plugin_audit` 工具，把已装插件的 peer 区间、官方包引用、slot 契约与服务注入逐条比对到本机 dsh 构建。纯 JavaScript、单一依赖、无构建步骤、无 UI。
+
+            ### 本版要点
+
+            - 新增 `dsh_plugin_audit` 工具：**离线**完成兼容性核查，不联网、无遥测、不存快照
+            - 修正 skill 中 rc 预发布 semver 判定的**事实错误**：`^0.1.0-rc.5` **不匹配** `0.1.5-rc.1`
+            - 修正索引数据路径（`data/plugins/<owner>__<repo>.yml`，非 `data/plugins.json`）与 `/readme` 端点静默截断的坑
+            - 补上此前遗漏的自动化审计通道与最新市场实况
+            - `inject` 仍为 `['skills']`；没有 `tools` 服务的部署上工具静默降级，skill 始终可用
 
             ### 安装
 
@@ -64,14 +84,15 @@ jobs:
 
             ### 使用
 
-            1. 安装后**重启 dsh**（bundle 层在启动时组合）
-            2. 新开一个会话，`<available_skills>` 目录出现 `dsh-community-plugins` 即生效
-            3. 直接问 agent：「本机装了什么插件？」——它会先读 profile manifest 确认实际情况，再按 skill 的渠道检索与评估
+            1. 安装后**重启 dsh**（bundle 层在启动时组合；改 `index.js` / `lib/` 必须重启）
+            2. 新开一个会话，`<available_skills>` 出现 `dsh-community-plugins`、工具列表出现 `dsh_plugin_audit` 即生效
+            3. 升级 dsh 前先问：「升级后我装的插件哪些会坏？」——agent 会调用 `dsh_plugin_audit` 逐条比对
 
             ### 验证
 
             - `${DSH_HOME:-~/.dsh}/profiles/web/package.json` 的 `dsh.profile.bundles` 含包名
             - 会话 skill 目录出现本 skill
+            - `dsh_plugin_audit({})` 返回本机全部第三方插件的结论
 
             ### 文档
 
