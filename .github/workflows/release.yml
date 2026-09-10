@@ -38,12 +38,12 @@ jobs:
           RELEASE_NOTES: >-
             ## dsh-community-plugins ${{ github.ref_name }}
 
-            为 DeepSeek Harness 提供社区插件生态指南的 bundle 插件：注册 `dsh-community-plugins` skill，使 agent 具备发现、评估、安装社区插件的能力。
+            为 DeepSeek Harness 提供社区插件生态指南的 bundle 插件：注册 `dsh-community-plugins` skill，使 agent 具备发现、评估、安装社区插件的能力。纯知识插件，仅单个 bundle 层、单一依赖、无构建步骤、无 UI。
 
             ### 安装
 
             ```bash
-            # 方式 1：GitHub 直装（推荐，纯 JS 零依赖）
+            # 方式 1：GitHub 直装（纯 JS，无构建脚本，无需构建授权）
             dsh plugin --profile web add github:HubaKing/dsh-community-plugins
 
             # 方式 2：tarball（可离线）
@@ -57,11 +57,13 @@ jobs:
 
             > `dsh` 不在 PATH 时：`node <dsh 安装根>/apps/cli/lib/bin.js plugin --profile web add <spec>`
 
+            > **不要用 `dsh plugin add dsh-community-plugins`（npm 形态）**：npm 上的同名包属于另一个项目（`funcodingdev/dsh-community-plugins`），不是本仓库。
+
             ### 使用
 
             1. 安装后**重启 dsh**（bundle 层在启动时组合）
             2. 新开一个会话，`<available_skills>` 目录出现 `dsh-community-plugins` 即生效
-            3. 直接问 agent：「本机装了什么插件？」或「推荐一个记忆类插件」——它会用 `market_search` 等市场工具检索并给出安装命令
+            3. 直接问 agent：「本机装了什么插件？」——它会先读 profile manifest 确认实际情况，再按 skill 的渠道检索与评估
 
             ### 验证
 
@@ -79,6 +81,10 @@ jobs:
             --notes "$RELEASE_NOTES" \
             "dsh-community-plugins-"*.tgz
 
+      # NOTE: the name `dsh-community-plugins` on npm belongs to a different
+      # project (funcodingdev). This step is inert while the NPM_TOKEN secret is
+      # unset; do not set it without renaming the package first, or `pnpm
+      # publish` will attempt to push into a name this repository does not own.
       - name: Publish to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

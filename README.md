@@ -1,46 +1,64 @@
 # dsh-community-plugins
 
-> A DeepSeek Harness (dsh) plugin that registers a global **skill** for discovering, evaluating and installing **community plugins** — from the GitHub `dsh-plugin` topic, the dshmarket GUI, and npm.
+> A DeepSeek Harness (dsh) plugin that registers a global **skill** teaching agents how to discover, evaluate and install **community plugins** — from the GitHub `dsh-plugin` topic, directory indexes, and npm.
 
 [**English**](README.md) · [**中文**](docs/lang/README_zh.md)
 
 ---
 
-**Looking for a DeepSeek Harness plugin to install?** This bundle adds the `dsh-community-plugins` skill to every agent session: agents learn which marketplace tools are already installed (`market_search`, dshmarket), how to search the `dsh-plugin` ecosystem, how to vet a plugin before installing it, and how to install via `dsh plugin` (npm, GitHub, tarball, or `link:` development mode).
+This bundle adds the `dsh-community-plugins` skill to every agent session: agents learn what is actually installed on this machine, how to search the `dsh-plugin` ecosystem, how to vet a plugin before installing it, and how to install through the official `dsh plugin` mechanism (npm, GitHub, tarball, or `link:` development mode).
 
 ## Why this plugin
 
-DeepSeek Harness plugins provide capabilities through two complementary mechanisms: **Tools** and **Skills**.
+DeepSeek Harness provides plugin capabilities through two complementary mechanisms: **Tools** and **Skills**.
 
 | | Tool (e.g. `market_search`) | Skill (registered by this plugin) |
 |---|---|---|
 | Nature | Capability channel: callable functions | Context knowledge: when, why, and how to call |
-| Installed by | `dsh-plugin-marketplace` etc. | This plugin |
+| Installed by | A marketplace plugin | This plugin |
 | Effect alone | Tool exists, but the agent does not recognize it | No marketplace interface to call |
 
-Installing a marketplace tool alone is not enough. An LLM agent's behavior is driven by context knowledge:
+Installing a marketplace tool alone is not enough, because agent behavior is driven by context knowledge:
 
-- `web_search` has an intuitive description and is any model's default generic approach;
+- `web_search` has an intuitive description and is any model's default generic approach.
 - `market_search` is a DSH-specific tool. Without this skill, the agent does not know it exists, does not associate it with installing plugins, and does not understand the local profile layout, the bundle mechanism, the vetting workflow, or the restart requirement.
 
-Without this plugin, agents fall back to generic web search. With it, every new session's agent automatically knows which marketplaces and tools are installed, which structured channels to query first, how to vet sources, how to install through the official mechanism, and how to verify the result. In practice, on the same environment, agents relied on web search before the skill was active, and invoked `market_search` directly with accurate install commands on their first response afterwards.
+Without this plugin, agents fall back to generic web search. With it, every new session knows which tools are installed, which structured channels to query, how to vet sources, how to install through the official mechanism, and how to verify the result.
+
+## Positioning: lightweight by design
+
+This is a **knowledge-only** plugin. It ships no runtime service, no client bundle, and no build step.
+
+| Property | Value |
+|---|---|
+| Runtime dependencies | 1 (`yaml`, used only to parse the bundle patch) |
+| Build step | None — plain JavaScript, no `prepare` script, no `allowBuilds` authorization |
+| Plugin form | bundle only (`dsh.bundle.patch`); no `dsh.client`, no UI surface |
+| Tracked files | 9 |
+| Repository size | ~49 KB |
+
+Because it is a single bundle layer with no client half, installing it does not add a UI, does not touch the model or request path, and does not require build authorization — the gate TypeScript plugins hit.
+
+### Neutrality
+
+This skill is deliberately **not a recommendation engine**. It teaches method and reports facts; it does not rank, endorse, or recommend any third-party plugin or marketplace. Candidate plugins are presented with verifiable facts (form, license, activity, known risks) and the user makes the choice.
 
 ## Features
 
 - Registers a global skill: `dsh-community-plugins` appears in every session's `<available_skills>` catalog
-- Teaches the agent to verify what is actually installed on this machine (read the profile manifest; never assume or promote uninstalled plugins)
-- Provides neutral discovery channels: installed-market tools, directory indexes (`Oh-My-DSH` `data/plugins.json`, `awesome-dsh-plugin`), GitHub `dsh-plugin` topic search, npm
-- Prevents the **repo-name ≠ npm-package-name** trap: shows how to read the real package name from `package.json` before querying npm (a wrong name yields a false 404 and a wrong "not published" verdict)
-- Tells the agent not to trust GitHub's license badge: verifies the LICENSE text and the npm `license` field instead (a real repo is mislabelled AGPL-3.0 while both sources say MIT)
-- Covers API-compatibility checking for third-party UI plugins: where the local official `@deepseek-ai/*` versions actually resolve from, rc-prerelease semver semantics, and grepping the target slot names
-- Flags repository-shipped installers (`install.sh` / `install.ps1`) separately from npm lifecycle scripts: they bypass `dsh plugin` dependency management, so prefer the npm form
-- Documents the official install methods plus speed-ups: `dsh plugin` command, npm-first, batch installs, hot-mount vs restart by plugin form
+- Teaches the agent to verify what is actually installed on this machine (read the profile manifest; never assume)
+- Provides neutral discovery channels: installed tooling, directory/index sources, GitHub `dsh-plugin` topic search, npm
+- Prevents the **repo-name ≠ npm-package-name** trap: read the real package name from `package.json` before querying npm (a wrong name yields a false 404 and a wrong "not published" verdict)
+- Tells the agent not to trust GitHub's license badge: cross-check the `LICENSE` text against the npm `license` field instead
+- Covers API-compatibility checking for third-party plugins: where local `@deepseek-ai/*` versions resolve from, rc-prerelease semver semantics, and verifying that the APIs a plugin calls still exist
+- Flags repository-shipped installers (`install.sh` / `install.ps1`) separately from npm lifecycle scripts: they bypass `dsh plugin` dependency management, so the npm form is preferred
+- Documents the official install methods plus speed-ups: `dsh plugin` usage, npm-first, batch installs, and hot-mount vs restart by plugin form
 - Documents the pnpm supply-chain policy (`minimumReleaseAge`) and its workarounds
 - States the constraints: no modification of official shipped presets, restart rules, build-authorization boundaries
 
 ## Install
 
-Prerequisite: dsh CLI (or invoke `apps/cli/lib/bin.js` from the dsh install root). Choose one of the following:
+Prerequisite: the dsh CLI (or invoke `apps/cli/lib/bin.js` from the dsh install root). Choose one of the following:
 
 ```bash
 # GitHub direct install (pure JS, no build scripts, no build authorization)
@@ -60,6 +78,8 @@ dsh plugin --profile web add link:${DSH_HOME:-~/.dsh}/plugins/dsh-community-plug
 
 **Restart dsh after installing** (bundle layers are composed at startup). Installation succeeds when `dsh-community-plugins` appears in `<available_skills>` of a new session.
 
+> ⚠️ **Do not install this via npm.** The name `dsh-community-plugins` on npm belongs to a **different project** ([`funcodingdev/dsh-community-plugins`](https://github.com/funcodingdev/dsh-community-plugins), TypeScript, with build scripts). This repository is distributed only through GitHub, the release tarball, or `link:` — installing `dsh plugin add dsh-community-plugins` silently gets you that other package. Use the `github:` form above.
+
 > When `dsh` is not on PATH, use `node <dsh install root>/apps/cli/lib/bin.js plugin --profile web add <spec>`.
 
 ## How it works
@@ -73,7 +93,7 @@ dsh plugin --profile web add link:${DSH_HOME:-~/.dsh}/plugins/dsh-community-plug
 
 Key points:
 
-- **Pure JavaScript, no build scripts**: single dependency `yaml`; GitHub direct install needs no `prepare` script or `allowBuilds` authorization (the build gate for TypeScript plugins, per the official docs)
+- **Plain JavaScript, no build scripts**: single dependency `yaml`; GitHub direct install needs no `prepare` script or `allowBuilds` authorization (the build gate for TypeScript plugins, per the official docs)
 - **Hot update**: `index.js` re-reads from disk on every discovery; editing `SKILL.md` requires no restart or reinstall
 - **Official plugin shape**: function form `export const name` + `export function apply(ctx)` + `dsh.bundle` manifest
 

@@ -6,33 +6,53 @@
 
 ---
 
+安装本插件后，每个新会话的 agent 都会获得一份指南：本机实际装了哪些工具、如何检索 `dsh-plugin` 生态、安装前如何评估一个插件、如何按官方 `dsh plugin` 机制安装（npm / GitHub / tarball / `link:` 开发模式）。
+
 ## 为什么需要本插件
 
-DeepSeek Harness 的插件能力通过两类机制提供：**工具（Tools）** 与 **技能（Skills）**。两者互补，缺一不可：
+DeepSeek Harness 的插件能力通过两类机制提供：**工具（Tools）** 与 **技能（Skills）**，两者互补：
 
 | | 工具（如 `market_search`） | 技能（本插件注册的 skill） |
 |---|---|---|
 | 本质 | 能力通道：可调用的函数 | 上下文知识：何时、为何、如何调用 |
-| 安装来源 | `dsh-plugin-marketplace` 等插件 | 本插件 |
+| 安装来源 | 某个市场插件 | 本插件 |
 | 单独安装时的效果 | 工具存在，但 agent 不认识它 | 无法调用任何市场接口 |
 
-**仅安装市场工具是不够的。** LLM agent 的行为由上下文中的知识驱动：
+仅安装市场工具是不够的，因为 agent 的行为由上下文知识驱动：
 
 - `web_search` 描述直观，是模型的默认通用手段；
 - `market_search` 是 DSH 专属工具，agent 默认不知道它的存在、不觉得「安装插件」与其相关，也不了解本机 profile 结构、bundle 机制、评估流程与重启要求。
 
-没有本插件时，agent 只能退化为网页搜索碰运气。安装本插件后，每个新会话的 agent 自动获得完整知识：本机已装哪些市场与工具、优先走哪条结构化检索通道、如何评估来源、如何按官方机制安装、装完如何验证。实测中，同一环境在 skill 生效前依赖网页搜索，生效后首次响应即直接调用 `market_search` 并给出准确安装命令。
+没有本插件时，agent 只能退化为网页搜索碰运气。安装本插件后，每个新会话的 agent 自动获得完整知识：本机已装哪些工具、优先走哪条结构化检索通道、如何评估来源、如何按官方机制安装、装完如何验证。
+
+## 定位：轻量化
+
+本插件是**纯知识插件**：不提供运行时服务、不包含 client 端产物、没有构建步骤。
+
+| 属性 | 值 |
+|---|---|
+| 运行时依赖 | 1 个（`yaml`，仅用于解析 bundle 补丁） |
+| 构建步骤 | 无 —— 纯 JavaScript，无 `prepare` 脚本，无需 `allowBuilds` 授权 |
+| 插件形态 | 仅 bundle（`dsh.bundle.patch`），无 `dsh.client`，无 UI 界面 |
+| 仓库文件数 | 9 |
+| 仓库体积 | 约 49 KB |
+
+由于只有单个 bundle 层、没有 client 半边，安装它不会引入 UI、不介入模型与请求链路、也不需要 TypeScript 插件才会遇到的构建授权。
+
+### 中立性
+
+本 skill **刻意不做推荐引擎**：只提供方法与事实，不对任何第三方插件或市场排序、背书或推荐。候选插件附带可核实的事实（形态、许可、活跃度、已知风险），由用户自行选择。
 
 ## 功能
 
 - 注册全局 skill：所有会话的 `<available_skills>` 目录自动出现 `dsh-community-plugins`
-- 指导 agent 以实测为准识别本机已装插件（读 profile manifest，不假设、不推荐未安装的第三方插件）
-- 提供中立的发现渠道：已装市场的工具、目录/索引源（`Oh-My-DSH` 的 `data/plugins.json`、`awesome-dsh-plugin`）、GitHub `dsh-plugin` topic 检索、npm
-- 规避**仓库名 ≠ npm 包名**的陷阱：指导先读 `package.json` 的 `name` 字段再查 npm（用仓库名查会得到假 404，进而误判「未发布」）
-- 指导不轻信 GitHub 的 license 徽章：改为交叉核验 LICENSE 全文与 npm `license` 字段（实测有仓库被误标 AGPL-3.0，两处实际均为 MIT）
-- 覆盖第三方 UI 插件的 API 兼容性核查：本机官方 `@deepseek-ai/*` 包的真实解析位置、rc 预发布版本 semver 语义、目标 slot 名的 grep 验证
-- 单独提示仓库自带的安装脚本风险（`install.sh` / `install.ps1`）：它们绕过 `dsh plugin` 的依赖管理，优先用 npm 形态安装
-- 提供官方安装方式与提速要点：`dsh plugin` 命令、npm-first、批量安装、按形态决定热挂载 vs 重启
+- 指导 agent 以实测为准识别本机已装内容（读 profile manifest，不假设）
+- 提供中立的发现渠道：已装工具、目录/索引源、GitHub `dsh-plugin` topic 检索、npm
+- 规避**仓库名 ≠ npm 包名**的陷阱：先读 `package.json` 的 `name` 字段再查 npm（用仓库名查会得到假 404，进而误判「未发布」）
+- 指导不轻信 GitHub 的 license 徽章：交叉核验 `LICENSE` 全文与 npm `license` 字段
+- 覆盖第三方插件的 API 兼容性核查：本机 `@deepseek-ai/*` 包的真实解析位置、rc 预发布版本 semver 语义、验证插件调用的 API 是否仍存在
+- 单独提示仓库自带安装脚本（`install.sh` / `install.ps1`）的风险：它们绕过 `dsh plugin` 的依赖管理，优先用 npm 形态
+- 提供官方安装方式与提速要点：`dsh plugin` 用法、npm-first、批量安装、按形态决定热挂载 vs 重启
 - 说明 pnpm 供应链策略（`minimumReleaseAge`）及其对策
 - 约束说明：不改官方 shipped preset、重启规则、构建授权边界
 
@@ -41,7 +61,7 @@ DeepSeek Harness 的插件能力通过两类机制提供：**工具（Tools）**
 前置条件：dsh CLI（或从 dsh 安装根调用 `apps/cli/lib/bin.js`）。以下方式任选其一：
 
 ```bash
-# GitHub 直装（纯 JS 零依赖，无需构建授权）
+# GitHub 直装（纯 JS，无构建脚本，无需构建授权）
 dsh plugin --profile web add github:HubaKing/dsh-community-plugins
 
 # Gitee 镜像（国内访问更快）
@@ -57,6 +77,8 @@ dsh plugin --profile web add link:${DSH_HOME:-~/.dsh}/plugins/dsh-community-plug
 ```
 
 安装后**重启 dsh**（bundle 层在启动时组合）。新会话中 `<available_skills>` 出现 `dsh-community-plugins` 即安装成功。
+
+> ⚠️ **不要用 npm 形态安装本插件。** npm 上的 `dsh-community-plugins` 属于**另一个项目**（[`funcodingdev/dsh-community-plugins`](https://github.com/funcodingdev/dsh-community-plugins)，TypeScript、含构建脚本）。本仓库只通过 GitHub、release tarball 或 `link:` 分发；执行 `dsh plugin add dsh-community-plugins` 会静默装上那个包。请使用上面的 `github:` 形式。
 
 > `dsh` 不在 PATH 时，使用 `node <dsh 安装根>/apps/cli/lib/bin.js plugin --profile web add <spec>`。
 
