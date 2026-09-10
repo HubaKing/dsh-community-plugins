@@ -4,4 +4,4 @@
 # skill registry and the model-facing skill loader.
 - insert:
     - id: dsh-community-plugins
-      name: dsh-community-plugins
+      name: '@hubaking/dsh-community-plugins'

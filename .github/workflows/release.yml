@@ -43,21 +43,24 @@ jobs:
             ### 安装
 
             ```bash
-            # 方式 1：GitHub 直装（纯 JS，无构建脚本，无需构建授权）
+            # 方式 1：npm（推荐，纯 JS 无构建脚本）
+            dsh plugin --profile web add @hubaking/dsh-community-plugins
+
+            # 方式 2：GitHub 直装
             dsh plugin --profile web add github:HubaKing/dsh-community-plugins
 
-            # 方式 2：tarball（可离线）
+            # 方式 3：tarball（可离线）
             curl -LO https://github.com/HubaKing/dsh-community-plugins/releases/download/${{ github.ref_name }}/dsh-community-plugins-${{ github.ref_name }}.tgz
             dsh plugin --profile web add ./dsh-community-plugins-${{ github.ref_name }}.tgz
 
-            # 方式 3：源码 + link（开发模式，修改即时生效）
+            # 方式 4：源码 + link（开发模式，修改即时生效）
             git clone https://github.com/HubaKing/dsh-community-plugins.git "${DSH_HOME:-~/.dsh}/plugins/dsh-community-plugins"
             dsh plugin --profile web add link:"${DSH_HOME:-~/.dsh}/plugins/dsh-community-plugins"
             ```
 
             > `dsh` 不在 PATH 时：`node <dsh 安装根>/apps/cli/lib/bin.js plugin --profile web add <spec>`
 
-            > **不要用 `dsh plugin add dsh-community-plugins`（npm 形态）**：npm 上的同名包属于另一个项目（`funcodingdev/dsh-community-plugins`），不是本仓库。
+            > **npm 形态必须带 `@hubaking/` scope**：无 scope 的同名包属于另一个项目（funcodingdev），`add dsh-community-plugins` 会装错。
 
             ### 使用
 
@@ -81,10 +84,9 @@ jobs:
             --notes "$RELEASE_NOTES" \
             "dsh-community-plugins-"*.tgz
 
-      # NOTE: the name `dsh-community-plugins` on npm belongs to a different
-      # project (funcodingdev). This step is inert while the NPM_TOKEN secret is
-      # unset; do not set it without renaming the package first, or `pnpm
-      # publish` will attempt to push into a name this repository does not own.
+      # Publishes as @hubaking/dsh-community-plugins. The unscoped
+      # `dsh-community-plugins` on npm belongs to a different project
+      # (funcodingdev) — never publish without the scope.
       - name: Publish to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

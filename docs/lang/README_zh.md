@@ -61,6 +61,9 @@ DeepSeek Harness 的插件能力通过两类机制提供：**工具（Tools）**
 前置条件：dsh CLI（或从 dsh 安装根调用 `apps/cli/lib/bin.js`）。以下方式任选其一：
 
 ```bash
+# npm（推荐：免克隆、免构建）
+dsh plugin --profile web add @hubaking/dsh-community-plugins
+
 # GitHub 直装（纯 JS，无构建脚本，无需构建授权）
 dsh plugin --profile web add github:HubaKing/dsh-community-plugins
 
@@ -78,7 +81,7 @@ dsh plugin --profile web add link:${DSH_HOME:-~/.dsh}/plugins/dsh-community-plug
 
 安装后**重启 dsh**（bundle 层在启动时组合）。新会话中 `<available_skills>` 出现 `dsh-community-plugins` 即安装成功。
 
-> ⚠️ **不要用 npm 形态安装本插件。** npm 上的 `dsh-community-plugins` 属于**另一个项目**（[`funcodingdev/dsh-community-plugins`](https://github.com/funcodingdev/dsh-community-plugins)，TypeScript、含构建脚本）。本仓库只通过 GitHub、release tarball 或 `link:` 分发；执行 `dsh plugin add dsh-community-plugins` 会静默装上那个包。请使用上面的 `github:` 形式。
+> ⚠️ **npm 形态必须带 `@hubaking/` scope。** npm 上的无 scope 名 `dsh-community-plugins` 属于**另一个项目**（[`funcodingdev/dsh-community-plugins`](https://github.com/funcodingdev/dsh-community-plugins)，TypeScript、含构建脚本），执行 `dsh plugin add dsh-community-plugins` 会静默装上那个包。本仓库发布名为 `@hubaking/dsh-community-plugins`。
 
 > `dsh` 不在 PATH 时，使用 `node <dsh 安装根>/apps/cli/lib/bin.js plugin --profile web add <spec>`。
 

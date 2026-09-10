@@ -61,6 +61,9 @@ This skill is deliberately **not a recommendation engine**. It teaches method an
 Prerequisite: the dsh CLI (or invoke `apps/cli/lib/bin.js` from the dsh install root). Choose one of the following:
 
 ```bash
+# npm (recommended: no clone, no build)
+dsh plugin --profile web add @hubaking/dsh-community-plugins
+
 # GitHub direct install (pure JS, no build scripts, no build authorization)
 dsh plugin --profile web add github:HubaKing/dsh-community-plugins
 
@@ -78,7 +81,7 @@ dsh plugin --profile web add link:${DSH_HOME:-~/.dsh}/plugins/dsh-community-plug
 
 **Restart dsh after installing** (bundle layers are composed at startup). Installation succeeds when `dsh-community-plugins` appears in `<available_skills>` of a new session.
 
-> ⚠️ **Do not install this via npm.** The name `dsh-community-plugins` on npm belongs to a **different project** ([`funcodingdev/dsh-community-plugins`](https://github.com/funcodingdev/dsh-community-plugins), TypeScript, with build scripts). This repository is distributed only through GitHub, the release tarball, or `link:` — installing `dsh plugin add dsh-community-plugins` silently gets you that other package. Use the `github:` form above.
+> ⚠️ **Always use the `@hubaking/` scope for the npm form.** The unscoped name `dsh-community-plugins` on npm belongs to a **different project** ([`funcodingdev/dsh-community-plugins`](https://github.com/funcodingdev/dsh-community-plugins), TypeScript, with build scripts), so `dsh plugin add dsh-community-plugins` silently installs that other package. This repository publishes as `@hubaking/dsh-community-plugins`.
 
 > When `dsh` is not on PATH, use `node <dsh install root>/apps/cli/lib/bin.js plugin --profile web add <spec>`.
 
