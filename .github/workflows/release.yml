@@ -49,62 +49,6 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_NOTES: >-
-            ## dsh-community-plugins ${{ github.ref_name }}
-
-            为 DeepSeek Harness 提供社区插件生态指南的 bundle 插件：注册 `dsh-community-plugins` skill，并注册两个工具，把插件与本机 dsh 构建逐条比对。纯 JavaScript、单一依赖、无构建步骤、无 UI。
-
-            ### 本版要点
-
-            - **新增预筛模式 `dsh_plugin_inspect({ spec: [...] })`**：一次给多个候选包，**一个字节的包内容都不下载**——只读 registry 文档，判定声明的 peer 区间、dsh 的版本门禁与 manifest 里的 lifecycle 脚本，并在 `limits` 里写明看不到什么。判定与措辞与 `dsh_plugin_audit` 同源（同一批函数），两处不会说法不一。
-            - **判定 dsh 自带的版本门禁**：`0.2.0-rc.2` 起 `dsh plugin add` 会拒绝 peer 不匹配的包，启动时也会**只禁用那一行**（profile 仍照常启动）。工具现在逐条复刻 `evaluatePluginCompatibility` 的判据（只管 `@deepseek-ai/dsh*`、跟运行中的 dsh 版本比、`includePrerelease` 语义、`compatibility.json` 里的精确版本豁免），输出 `gate:` 行并给出可直接粘贴的 `allow-version` 命令。
-            - **修复：profile 组成每次调用重读**。此前按进程缓存 `dsh.profile.bundles`，导致刚 `dsh plugin add` 成功的包被报成 `NOT in dsh.profile.bundles` —— 而这正是安装流程依赖的那一步。
-            - **修复：带 target 的审计不再误报**。此前只把目标包当作已装集合，其余 bundle 会被报成「the profile does not boot」；现在始终以完整已装集合判定 profile 组成。
-            - **`peers:` 汇总行与 client 侧 inject**：满足的 peer 不再沉默（"没有发现"与"没有声明"是两件事）；由浏览器半声明的 `slots` / `theme` / `locale` 单独列出，不再因此压低 verdict。
-            - **测试新增 `screen` 套件**，并为版本门禁、profile 重读、target 审计各补了回归测试
-            - 判定分级不变：`incompatible` / `at-risk` / `unknown` / `compatible`
-            - `inject` 仍为 `['skills']`；没有 `tools` 服务的部署上两个工具静默降级，skill 始终可用，且一个工具注册失败不会带走另一个
-
-            ### 安装
-
-            ```bash
-            # 方式 1：GitHub 直装
-            dsh plugin --profile web add github:HubaKing/dsh-community-plugins
-
-            # 方式 2：tarball（可离线）
-            curl -LO https://github.com/HubaKing/dsh-community-plugins/releases/download/${{ github.ref_name }}/hubaking-dsh-community-plugins-${{ github.ref_name }}.tgz
-            dsh plugin --profile web add ./hubaking-dsh-community-plugins-${{ github.ref_name }}.tgz
-
-            # 方式 3：源码 + link（开发模式，修改即时生效）
-            git clone https://github.com/HubaKing/dsh-community-plugins.git "${DSH_HOME:-~/.dsh}/plugins/dsh-community-plugins"
-            dsh plugin --profile web add link:"${DSH_HOME:-~/.dsh}/plugins/dsh-community-plugins"
-
-            # 方式 4：npm（本 tag 若已配置 NPM_TOKEN 则一并发布）
-            dsh plugin --profile web add @hubaking/dsh-community-plugins
-            ```
-
-            > `dsh` 不在 PATH 时：`node <dsh 安装根>/apps/cli/lib/bin.js plugin --profile web add <spec>`
-
-            > **npm 形态必须带 `@hubaking/` scope**：无 scope 的同名包属于另一个项目（funcodingdev），`add dsh-community-plugins` 会装错。
-
-            ### 使用
-
-            1. 安装后**重启 dsh**（bundle 层在启动时组合；改 `index.js` / `lib/` 必须重启）
-            2. 新开一个会话，`<available_skills>` 出现 `dsh-community-plugins`、工具列表出现 `dsh_plugin_audit` 与 `dsh_plugin_inspect` 即生效
-            3. 装某个包**之前**问：「这个包能装吗？」——agent 会调用 `dsh_plugin_inspect`（联网，把 tarball 拉下来审）
-            4. 已经装了的，或升级 dsh **之后**问：「我装的插件现在怎么样？」——agent 会调用 `dsh_plugin_audit`（离线）
-
-            ### 验证
-
-            - `${DSH_HOME:-~/.dsh}/profiles/web/package.json` 的 `dsh.profile.bundles` 含包名
-            - 会话 skill 目录出现本 skill
-            - `dsh_plugin_audit({})` 返回本机全部第三方插件的结论
-            - `dsh_plugin_inspect({ spec: '<某个包>' })` 返回下载、校验与判定结果，且临时目录已清空
-
-            ### 文档
-
-            - README 中英双语（English / 中文），语言切换栏在文档顶部
-            - 官方文档：[打包与安装插件](https://deepseek-harness.github.io/deepseek-harness/develop/basic/publish) · [生命周期](https://deepseek-harness.github.io/deepseek-harness/develop/framework/)
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           # `pnpm pack` names the file after the package name with the scope
@@ -117,9 +61,10 @@ jobs:
             ls -la >&2
             exit 1
           fi
+          sed "s|__VERSION__|${TAG}|g" .github/release-notes.md > /tmp/release-notes.md
           gh release create "$TAG" \
             --title "$TAG" \
-            --notes "$RELEASE_NOTES" \
+            --notes-file /tmp/release-notes.md \
             "$TARBALL"
 
       # Publishes as @hubaking/dsh-community-plugins. The unscoped
