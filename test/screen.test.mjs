@@ -39,6 +39,8 @@ const DSH = '0.2.0-rc.2'
 let origin = ''
 let tarballRequests = 0
 let documentRequests = 0
+/** What the registry was asked for. npm trims the manifest unless the client asks nicely. */
+const acceptHeaders = []
 
 /** A packument whose version manifest is exactly what the caller wants judged. */
 function packument(name, version, manifest) {
@@ -59,6 +61,27 @@ function packument(name, version, manifest) {
   }
 }
 
+/** A packument with several versions and their publish times, for the age policy. */
+function versionedPackument(name, entries) {
+  const latest = entries[entries.length - 1].version
+  return {
+    name,
+    'dist-tags': { latest },
+    time: Object.fromEntries(entries.map(entry => [entry.version, entry.published])),
+    versions: Object.fromEntries(entries.map(entry => [entry.version, {
+      ...entry.manifest,
+      name,
+      version: entry.version,
+      dist: { tarball: `${origin}/${name}/-/${name}-${entry.version}.tgz` },
+      fileCount: 2,
+      unpackedSize: 1024,
+    }])),
+  }
+}
+
+const HOUR = 3600_000
+const ago = ms => new Date(Date.now() - ms).toISOString()
+
 function respondJson(response, value) {
   response.writeHead(200, { 'content-type': 'application/json' })
   response.end(JSON.stringify(value))
@@ -73,7 +96,17 @@ const server = createServer((request, response) => {
     response.end(JSON.stringify({ error: 'a screen must not download tarballs' }))
     return
   }
+  acceptHeaders.push(String(request.headers.accept ?? ''))
   documentRequests += 1
+  if (path === '/fresh-plugin') {
+    // 2.0.0 is an hour old; 1.0.0 is ten days old. Which one pnpm installs is
+    // decided entirely by the release-age policy.
+    respondJson(response, versionedPackument('fresh-plugin', [
+      { version: '1.0.0', published: ago(10 * 24 * HOUR), manifest: { license: 'MIT' } },
+      { version: '2.0.0', published: ago(1 * HOUR), manifest: { license: 'MIT' } },
+    ]))
+    return
+  }
   if (path === '/plain-plugin') {
     respondJson(response, packument('plain-plugin', '1.2.3', {
       dsh: { bundle: { patch: './cordis.patch.yml' } },
@@ -164,6 +197,20 @@ check('the screen downloads no package bytes at all', tarballRequests === 0,
 check('the screen is marked as metadata-only in the payload', report.metadataOnly === true)
 check('the screen still discloses that it used the network', report.network === true)
 
+// The registry trims the manifest when the client accepts its abbreviated form:
+// measured, 3-6 fields instead of 25-28, with `dsh`, `scripts` and `license`
+// dropped. Every request must therefore ask for the full document, or `form`
+// reads as plain `cordis`, licences read as null, and the lifecycle check the
+// screen advertises can never fire.
+check('every registry request asks for the full document, never npm\'s trimmed one',
+  acceptHeaders.length > 0
+  && acceptHeaders.every(header => !header.includes('vnd.npm.install-v1+json'))
+  && acceptHeaders.every(header => header.includes('application/json')),
+  JSON.stringify(acceptHeaders.slice(0, 3)))
+check('a manifest read this way still carries the dsh block and scripts',
+  byName.get('plain-plugin')?.form === 'bundle' && byName.get('old-plugin')?.hasScripts === true,
+  `${byName.get('plain-plugin')?.form} / ${byName.get('old-plugin')?.hasScripts}`)
+
 // A package with nothing declared to check is compatible, and the rollup says so
 // rather than staying silent.
 const plain = byName.get('plain-plugin')
@@ -186,6 +233,59 @@ check('the gate denial explains itself and names the exemption command',
 const exempt = byName.get('gated-plugin-exempt')
 check('an exact-version grant in compatibility.json clears the screen denial too',
   exempt.gate.exempted === true && exempt.gate.denied === false, JSON.stringify(exempt.gate))
+
+// ---------------------------------------------------------------------------
+// The release-age policy decides which version is even judged
+//
+// `pnpm add dsh-dream-skin` resolved 9.27.1 rather than the `latest` 9.29.0 on
+// this machine, and the two versions' peers disagree about the running dsh — so
+// auditing the newest version can describe a package nobody will install.
+// Configured thresholds are honoured exactly; with none configured nothing is
+// invented, and the report says so plus the pin that settles it.
+// ---------------------------------------------------------------------------
+{
+  const policyFor = policy => screenPackages({
+    specs: ['fresh-plugin'],
+    environment: { ...environment, releaseAge: policy },
+    registry: origin,
+  })
+
+  const configured = await policyFor({ minimumMinutes: 48 * 60, exclude: [], configured: true })
+  const candidate = configured.candidates[0]
+  console.log('# release-age policy')
+  console.log(`  configured 48h -> ${candidate.name}@${candidate.version}`
+    + ` skipped=${JSON.stringify(candidate.skippedByAge)} age=${candidate.ageMinutes}m`)
+  check('a configured minimumReleaseAge sends resolution to the older version',
+    candidate.version === '1.0.0', `${candidate.version} (latest ${candidate.latestVersion})`)
+  check('the versions the policy passed over are reported as evidence',
+    candidate.skippedByAge.includes('2.0.0'), JSON.stringify(candidate.skippedByAge))
+  check('what is judged is the resolved version, not `latest`',
+    candidate.ageMinutes > 24 * 60, String(candidate.ageMinutes))
+
+  const whitelisted = await policyFor({
+    minimumMinutes: 48 * 60, exclude: ['fresh-plugin@2.0.0'], configured: true,
+  })
+  check('a minimumReleaseAgeExclude entry admits the fresh version',
+    whitelisted.candidates[0].version === '2.0.0', whitelisted.candidates[0].version)
+
+  const unconfigured = await policyFor({ minimumMinutes: null, exclude: [], configured: false })
+  const fresh = unconfigured.candidates[0]
+  check('with nothing configured the newest version is resolved, and no threshold is invented',
+    fresh.version === '2.0.0' && fresh.skippedByAge.length === 0,
+    `${fresh.version} skipped=${JSON.stringify(fresh.skippedByAge)}`)
+  check('with nothing configured the report still states the limit',
+    unconfigured.limits.some(limit => limit.includes('release age of its own')
+      && limit.includes('add <package>@<version>')),
+    unconfigured.limits.join(' | '))
+
+  const rendered = renderScreen(unconfigured)
+  console.log(`  rendered : ${rendered.split('\n').find(line => line.includes('release age:'))}`)
+  console.log()
+  check('a fresh version with no policy renders the pin recipe',
+    rendered.includes('release age:') && rendered.includes('add fresh-plugin@2.0.0'), rendered)
+  check('a configured policy does not render the unconfigured caveat',
+    !renderScreen(configured).includes('configures no'), renderScreen(configured))
+}
 
 // Wording parity: the same manifest, judged by the installed audit, must produce
 // the identical sentence.
@@ -240,9 +340,11 @@ check('a github: spec is refused with the reason, not silently dropped',
 
 // Limits: a screen must say what it could not check.
 check('the report states what a screen cannot see',
-  Array.isArray(report.limits) && report.limits.length === 2, JSON.stringify(report.limits))
+  Array.isArray(report.limits) && report.limits.length >= 2, JSON.stringify(report.limits))
 check('the limits name the checks that need the package contents',
   report.limits.some(limit => limit.includes('slots') && limit.includes('named exports')), report.limits.join('; '))
+check('the limits state that "compatible" is about this screen only',
+  report.limits.some(limit => limit.includes('nothing this screen can check failed')), report.limits.join('; '))
 
 // Rendering: the bulk report reuses the audit's own lines and section headers.
 const text = renderScreen(report)

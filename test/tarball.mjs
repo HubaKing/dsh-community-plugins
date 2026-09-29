@@ -51,16 +51,18 @@ export function makeTarball(entries) {
 }
 
 /**
- * One pax extended-header record. The length prefix counts itself, so it is
- * computed by fixed point rather than by guessing.
+ * One pax extended-header record. The length prefix counts itself **in bytes**,
+ * which is what a real archiver writes and what a reader must therefore parse:
+ * a value with multi-byte characters makes the two differ, and a writer that
+ * counted characters would emit a record no reader can walk.
  * @param {string} key
  * @param {string} value
  */
 function paxRecord(key, value) {
   const body = ` ${key}=${value}\n`
-  let length = body.length
+  let length = Buffer.byteLength(body, 'utf8')
   while (true) {
-    const candidate = `${length}${body}`.length
+    const candidate = Buffer.byteLength(`${length}${body}`, 'utf8')
     if (candidate === length) return `${length}${body}`
     length = candidate
   }

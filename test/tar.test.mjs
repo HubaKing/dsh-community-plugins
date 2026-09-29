@@ -131,6 +131,49 @@ const destinationFor = () => join(root, `target-${counter += 1}`)
 }
 
 // ---------------------------------------------------------------------------
+// A pax record whose value is not ASCII
+//
+// The length prefix counts bytes while a decoded string indexes characters, so a
+// reader that walks the string desynchronises on the first multi-byte value.
+// Measured on `dsh-theme-kit@0.1.4`, whose wallpapers are named in Chinese: the
+// path came back with the tail of the next record appended (`…树荫.jpg\n19 `),
+// and writing a name containing a newline throws ENOENT on Windows — the whole
+// package could not be audited.
+// ---------------------------------------------------------------------------
+{
+  const names = [
+    'package/wallpapers/static/树荫.jpg',
+    'package/wallpapers/dynamic/线条小狗.mp4',
+    'package/壁纸/夏日海边.png',
+  ]
+  const entries = names.flatMap((name, index) => ([
+    { name, content: `wallpaper ${index}\n`, paxName: true },
+  ]))
+  const destination = destinationFor()
+  const result = extractTarGz(makeTarball(entries), destination)
+  console.log('# pax with multi-byte values')
+  console.log(`  extracted: ${JSON.stringify(result.files)}`)
+  console.log()
+  for (const name of names) {
+    check(`a multi-byte pax path is honoured exactly: ${name}`,
+      result.files.includes(name), JSON.stringify(result.files))
+  }
+  check('no extracted name carries the tail of another record',
+    result.files.every(name => !/[\n\r]/.test(name)), JSON.stringify(result.files))
+  check('the multi-byte entries are written where they claim',
+    readFileSync(join(destination, ...names[0].split('/')), 'utf8') === 'wallpaper 0\n')
+  // The desynchronisation used to surface as a throw rather than as a wrong name.
+  const ascii = destinationFor()
+  const asciiResult = extractTarGz(makeTarball([
+    { name: 'package/ascii.txt', content: 'ok\n', paxName: true },
+    { name: 'package/中文.txt', content: 'ok\n', paxName: true },
+    { name: 'package/after.txt', content: 'ok\n', paxName: true },
+  ]), ascii)
+  check('a multi-byte record does not derail the records after it',
+    asciiResult.files.includes('package/after.txt'), JSON.stringify(asciiResult.files))
+}
+
+// ---------------------------------------------------------------------------
 // Caps and malformed input
 // ---------------------------------------------------------------------------
 {

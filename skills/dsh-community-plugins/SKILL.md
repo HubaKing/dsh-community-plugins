@@ -82,6 +82,8 @@ dsh_plugin_inspect({ spec: ['pkg-a', 'pkg-b', 'pkg-c'] })    # 预筛多个候�
 
 **`spec` 传数组 = 预筛模式**：候选多的时候（例如你从 topic 检索到几十个皮肤）先用它把池子收窄，再对通过的包用单个 `spec` 做完整审计。它**只读 registry 文档，一个字节的包内容都不下载、不解包、不读代码**，因此能判的只有三样：声明的 peer 区间、dsh 的版本门禁、manifest 里的 lifecycle 脚本；看不到的（bundle patch 文件、slot、具名导出、inject 服务名）在报告的 `limits` 里一次讲清，不会猜。判定与措辞跟 `dsh_plugin_audit` 完全同源（同一批函数），两处不会说法不一。
 
+> ⚠️ **它读的是 registry 的完整文档，不是 npm 的"精简文档"。** 这点必须写死：请求头一旦带上 `application/vnd.npm.install-v1+json`，registry 会丢掉 `dsh` / `scripts` / `license`（实测字段数 3–6 vs 25–28），于是形态全被读成 `cordis`、license 恒为 null、**而"判 lifecycle 脚本"这项承诺会静默失效**。
+
 它做的事，以及**为什么值得在装之前花这一次网络**：
 
 | 步骤 | 细节 | 为什么重要 |
@@ -397,6 +399,7 @@ node -p "require('<dsh 根>/packages/client/ui-slots/package.json').version"
 - **导出的具体符号，边界在哪**：核对**是**做了，但只在能证明的范围内。`dsh_plugin_audit` / `dsh_plugin_inspect` 会走完声明图并核对运行时导出列表；只有图**完整解析**、且该名字在声明与运行时入口都找不到时，才报 `incompatible`。图不完整（某个 re-export 指向的包不在本机、没有 `types` 入口、`export =` 形式……）时一律报 `unknown` 并列出原因。类型专用 import（`import type …`、行内 `type X`）不参与核对——它们被构建期抹掉，不可能导致运行期失败。**CJS 里靠 `require()` 取属性的用法**（`require('pkg').Foo`）也拿不到名字，不参与核对。
 - **不在本机的包**：如 `react`、外部 npm 依赖，本机查不到版本就无法判定区间。
 - **`gate:` 行比较的是哪个版本**：门禁在源码里用的是 **`@deepseek-ai/dsh-app-boot` 自己的 package.json 版本**（`getDshRuntimeVersion()`），工具读的是**安装根 `package.json` 的 version**。本机实测两者一致（都是 `0.2.0-rc.2`）；若某天不一致，`gate:` 行可能偏一格，此时以 `dsh plugin add` 的实际报错为准。
+- **pnpm 的发布年龄门槛（`minimumReleaseAge`）**：它决定 `dsh plugin add` **实际解析到哪个版本**，因此也决定审的到底是谁。工具会读 profile 的 `pnpm-workspace.yaml` / `.npmrc`：**配了阈值就精确计算**（报告直接写"这个版本是 pnpm 会装的"）；**没配就明说不猜**——pnpm 11 有自己的默认值（本机实测：9.4 小时前的版本被跳过、改用 57 小时前的），而该默认值**离线读不到**，所以报告只给 `limits` 与钉版本命令，不编造一个阈值。⚠️ 实测教训：`inspect` 审了 `latest`（9.29.0），pnpm 却解析到 9.27.1，两者的 peer 声明对本机 dsh 一个可用一个被判死——**审的版本和装到的版本可能不是同一个**。
 - **client 侧的 `inject` token**：`[bundle+client]` 插件里由**浏览器半**声明的服务名（实测形态：`slots`、`theme`、`locale`）跑在渲染进程自己的 Cordis 上下文里，**宿主 context 永远解析不到**。工具会把这些单独列成 `client-side injects (…)` 并且**不因此压低 verdict**——否则一个能正常工作的主题会被误报成 `unknown`。可核对的 client 契约是 slot 名（工具核）。
 - **`ctx.<service>` 的静态注册表**：服务名在运行时才能确认；运行时也拿不到时会报 `unknown`。
 - **没有 dsh 源码树时的"包缺失"判定**：此时包集合只来自 `profiles/node_modules`（dsh 启动时修复的运行时解析图），它**比源码树少**（尤其缺 client 侧包）。所以工具会把"某包不存在"降级为 `at-risk` 并注明需复核，而不是断言它被移除。有源码 checkout 时判定才是硬的。
@@ -474,7 +477,8 @@ node "<checkout>/apps/cli/lib/bin.js" plugin --profile web list   # 应列出该
 
 **供应链策略（pnpm ≥10/11 的 minimumReleaseAge）**：
 
-- 现象：发布太新的包可能被**静默跳过**——`dsh plugin update` 报 "Already up to date"，但 `npm view <pkg> version` 明明有更新版本。
+- 现象：发布太新的包可能被**静默跳过**——`dsh plugin update` 报 "Already up to date"，但 `npm view <pkg> version` 明明有更新版本；更麻烦的是 `dsh plugin add <包名>` 会**装到一个更旧的版本**，而你以为装的是 latest。
+- 实测（2026-09-30，pnpm 11.7.0，未配置任何阈值）：`dsh plugin add dsh-dream-skin` 解析到 **9.27.1**，而 registry 的 `latest` 是发布仅 **9.4 小时**的 **9.29.0**。两者差别致命——9.27.1 的 peer 在 0.2.x 上会被门禁整包判死，9.29.0 才修好。**门禁拒绝的那次安装，与我审计的那个版本根本不是同一个包。**
 - 原因：pnpm 的 `minimumReleaseAge`（发布年龄门槛）把「太新」的版本排除出解析；`pnpm-workspace.yaml` 里的 `minimumReleaseAgeExclude` 是白名单。
 - 对策：
   1. 先 `npm view <pkg> version` 核对最新版；
