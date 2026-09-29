@@ -98,7 +98,27 @@ dsh_plugin_inspect({ spec: ['pkg-a', 'pkg-b', 'pkg-c'] })    # 预筛多个候�
 
 ## 1. 先看本机已装什么
 
-`${DSH_HOME:-~/.dsh}/profiles/web/package.json` 的 `dsh.profile.bundles` 列出生效的 bundle 层，`dependencies` 列出已安装的插件依赖；**以实际读到的结果为准**，不要把文档提到的插件当作已安装。
+### ⚠️ 第一步永远是：确认**在跑的是哪个 profile**
+
+`${DSH_HOME:-~/.dsh}/profiles/` 下可能同时存在多个 profile（实测：`desktop` 与 `web` 并存），而**安装必须装进正在运行的那一个**——装到另一个 profile 里，bundle 层、依赖、`dsh.profile.bundles` 全都正确，界面却**一点变化都没有**（本机实测：皮肤装进 `web`，而桌面应用组合的是 `desktop`，看起来完全像"插件失效"）。
+
+**怎么确认**（按可靠性排序）：
+
+1. **问运行时**：`dsh_plugin_audit` / `dsh_plugin_inspect` 现在默认就用**本进程正在运行的 profile**（读官方 `profileContext` 服务的 `name`/`dir`），报告头部的 `profile <名字>` 就是答案。
+2. **看进程启动参数**（最硬的证据）：宿主进程会把 profile 目录作为参数传入：
+   ```powershell
+   Get-CimInstance Win32_Process -Filter "Name like '%DeepSeek%'" |
+     Where-Object { $_.CommandLine -match 'profile' } |
+     Select-Object ProcessId, CommandLine | Format-List
+   # 形如 …dsh-desktop-host/lib/index.js …app.asar\dsh  C:\Users\HubaKing\.dsh\profiles\desktop  …
+   ```
+3. **看 profile 目录的 mtime**：`Get-ChildItem "$env:USERPROFILE\.dsh\profiles"` —— 启动时被组合的那个 profile，其 `cordis.yml` 会在**进程启动时刻**被改写（实测 `desktop\cordis.yml` 的 mtime 与进程启动时间完全一致）。
+
+**命令行上的对应关系**：`dsh plugin --profile <名字> add …`。装之前先想清楚这个名字是不是**在跑的那个**；装完重启仍"没效果"时，第一件要复查的就是这里，而不是先怀疑插件坏了。
+
+### 再看已装了什么
+
+在**正确 profile** 的 `package.json` 里：`dsh.profile.bundles` 列出生效的 bundle 层，`dependencies` 列出已安装的插件依赖；**以实际读到的结果为准**，不要把文档提到的插件当作已安装。
 
 关于 `node_modules`：profile 的 `node_modules` 里**只有 profile 自己安装的依赖**（含 `dsh plugin add` 装进来的社区插件），**不含官方 `@deepseek-ai/*` 包**——那些从 dsh 安装根解析（要查本机 API 版本见 §3）。想知道 profile 到底装了什么，也可以读 `node_modules/.modules.yaml` 的 `hoistedLocations`。
 

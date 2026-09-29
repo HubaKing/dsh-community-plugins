@@ -10,10 +10,10 @@
  * Run: node test/fixtures.test.mjs
  */
 
-import { writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { buildFixture, patchBodyFor, SLOT_SOURCE } from './fixtures.mjs'
-import { audit, resolveEnvironment } from '../lib/audit.js'
+import { audit, liveProfile, resolveEnvironment, selectProfile } from '../lib/audit.js'
 
 let passed = 0
 let failed = 0
@@ -640,6 +640,70 @@ function bundlePlugin(overrides = {}, files = {}) {
     plugin.unknowns.join('; '))
   check('a host-declared token is still probed', !plugin.clientServices.includes('webServer'),
     plugin.clientServices.join(', '))
+}
+
+// ---------------------------------------------------------------------------
+// The default profile follows the running process, not a name heuristic
+//
+// "web when it exists" sent a whole session of audits at a profile the running
+// app does not compose: a theme installed into `web` was reported as installed
+// while the desktop app showed no change. `profileContext` is the launcher's own
+// fact about which profile is live, and it is what the default now follows.
+// ---------------------------------------------------------------------------
+{
+  const fixture = buildFixture({ plugins: [bundlePlugin()], bundles: [PLUGIN] })
+  cleanups.push(fixture.cleanup)
+  // A second profile, as a desktop install has: the fixture only writes `web`.
+  const desktopDir = join(fixture.dshHome, 'profiles', 'desktop')
+  mkdirSync(desktopDir, { recursive: true })
+  writeFileSync(join(desktopDir, 'package.json'), `${JSON.stringify({
+    name: 'dsh-profile-desktop',
+    private: true,
+    dependencies: {},
+    dsh: { profile: { bundles: ['@deepseek-ai/dsh-base'] } },
+  }, null, 2)}\n`)
+
+  const base = { dshHome: fixture.dshHome, dshRoot: fixture.dshRoot }
+  const byNameHeuristic = resolveEnvironment(base)
+  const liveCtx = { get: name => (name === 'profileContext' ? { name: 'desktop', dir: desktopDir } : undefined) }
+  const live = liveProfile(liveCtx)
+  const selection = selectProfile(liveCtx, undefined)
+  const byLiveProfile = resolveEnvironment({
+    ...base,
+    profileName: selection.profileName,
+    profileDir: selection.profileDir,
+  })
+  const mismatched = selectProfile(liveCtx, 'web')
+
+  console.log('# profile selection')
+  console.log(`  name heuristic         : ${byNameHeuristic.profileName} (${byNameHeuristic.profileDir})`)
+  console.log(`  live profileContext    : ${live.name} -> ${live.dir}`)
+  console.log(`  resolved by live       : ${byLiveProfile.profileName} (${byLiveProfile.profileDir})`)
+  console.log(`  explicit mismatch note : ${mismatched.notes[0] ?? '(none)'}`)
+  console.log()
+
+  check('without a live context the old heuristic still picks web',
+    byNameHeuristic.profileName === 'web', String(byNameHeuristic.profileName))
+  check('the live profile name and directory are read from profileContext',
+    live.name === 'desktop' && live.dir === desktopDir, JSON.stringify(live))
+  check('the default follows the live profile instead of the heuristic',
+    byLiveProfile.profileName === 'desktop', String(byLiveProfile.profileName))
+  check('an explicit profile directory is honoured verbatim',
+    byLiveProfile.profileDir === desktopDir, String(byLiveProfile.profileDir))
+  check('an explicit request that differs from the live profile says so',
+    mismatched.notes.length === 1
+      && mismatched.notes[0].includes('"web"') && mismatched.notes[0].includes('"desktop"'),
+    JSON.stringify(mismatched.notes))
+  check('an explicit request equal to the live profile carries no note',
+    selectProfile(liveCtx, 'desktop').notes.length === 0,
+    JSON.stringify(selectProfile(liveCtx, 'desktop').notes))
+
+  // A context that cannot answer must not decide anything.
+  check('a context without profileContext yields no live profile',
+    liveProfile({ get: () => undefined }).name === undefined)
+  check('a throwing ctx.get is swallowed rather than propagated',
+    liveProfile({ get: () => { throw new Error('no such service') } }).name === undefined)
+  check('no ctx at all is handled', liveProfile(undefined).name === undefined)
 }
 
 for (const cleanup of cleanups) cleanup()
