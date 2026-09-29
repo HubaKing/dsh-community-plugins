@@ -61,11 +61,11 @@ jobs:
             ls -la >&2
             exit 1
           fi
-          # The notes live in the repo, not in this workflow: a large multi-line
-          # UTF-8 string passed through the runner's environment came out mangled
-          # (2 U+FFFD) while the file it came from was clean. Update
-          # .github/release-notes.md for each release; every `__VERSION__` in it
-          # is replaced with the tag here.
+          # The notes live in the repo, not in this workflow. Embedded here as a
+          # YAML folded scalar (`>-`) with no blank lines between the bullets,
+          # the whole list folded into a single paragraph in the published body.
+          # Update .github/release-notes.md for each release; every
+          # `__VERSION__` in it is replaced with the tag here.
           sed "s|__VERSION__|${TAG}|g" .github/release-notes.md > /tmp/release-notes.md
           gh release create "$TAG" \
             --title "$TAG" \

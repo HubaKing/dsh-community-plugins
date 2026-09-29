@@ -12,7 +12,7 @@
 
   - **`dsh plugin remove` 报错却什么都没删**。profile 的 `pnpm-workspace.yaml` 里残留的 `patchedDependencies` 条目会让 pnpm 报 `ERR_PNPM_UNUSED_PATCH` 并**整体回滚**（包、`node_modules`、`dsh.profile.bundles` 原封不动）。文档给出成因、处置步骤与事后该确认的三处；同时写明 `add` 被版本门禁拒绝也是原子失败，什么都没装。
 
-- **发布说明改为仓库内文件**（`.github/release-notes.md`）。此前的说明内嵌在 workflow 里、经 runner 环境变量传递，实测在 v0.5.0 的 Release 正文里产生了 2 个 U+FFFD 替换字符（而本地文件与 GitHub 上的副本都是干净的）。现在用 `sed` 替换版本号后 `gh release create --notes-file` 读取文件，这类重编码不会再有，说明本身也可评审、可 diff。v0.5.0 的正文已一并订正。
+- **发布说明改为仓库内文件**（`.github/release-notes.md`）。此前的说明内嵌在 workflow 里、作为 YAML **折叠标量**（`>-`），而项目符号之间没有空行，折叠后整段列表被并成**一个段落**——v0.4.0 与 v0.5.0 的 Release 正文都是这个形态。现在说明以普通 Markdown 文件存放（`__VERSION__` 占位），发布步骤用 `sed` 替换版本号后由 `gh release create --notes-file` 读取：渲染结果与仓库里写的**逐字符一致**（已校验），并且可评审、可 diff。
 
 - 注：**判定口径与工具行为在本版没有变化**。上一版（v0.5.0）新增的预筛模式 `dsh_plugin_inspect({ spec: [...] })`（只读 registry 文档、不下载包内容）与 `gate:` 版本门禁判定仍然照旧，细节见 v0.5.0 的发布说明。
 
