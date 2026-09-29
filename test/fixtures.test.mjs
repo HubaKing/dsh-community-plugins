@@ -13,7 +13,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { buildFixture, patchBodyFor, SLOT_SOURCE } from './fixtures.mjs'
-import { audit, liveProfile, resolveEnvironment, selectProfile } from '../lib/audit.js'
+import { audit, lifecycleSignals, liveProfile, resolveEnvironment, selectProfile } from '../lib/audit.js'
 
 let passed = 0
 let failed = 0
@@ -305,16 +305,61 @@ function bundlePlugin(overrides = {}, files = {}) {
 // ---------------------------------------------------------------------------
 {
   const { result } = auditFixture({
-    plugins: [bundlePlugin({ scripts: { postinstall: 'node ./setup.mjs' } })],
+    plugins: [bundlePlugin({ scripts: { postinstall: 'node ./setup.mjs', prepare: 'npm run build' } })],
     bundles: [PLUGIN],
   })
   const plugin = result.plugins[0]
   console.log('# lifecycle script')
   console.log(`  signals : ${plugin.signals.map(signal => `${signal.kind}(${signal.level})`).join(', ')}`)
   console.log()
-  check('an install-time lifecycle script is surfaced at high severity',
+  check('a registry install-time lifecycle script is surfaced at high severity',
     plugin.signals.some(signal => signal.kind === 'lifecycle:postinstall' && signal.level === 'high'),
     JSON.stringify(plugin.signals))
+  // npm and pnpm run `prepare` for a git or local install, never for a registry
+  // tarball, so reporting it at install-time severity would be a false positive
+  // on every registry install.
+  check('prepare is reported as source-install-only, not as an install-time hook',
+    plugin.signals.some(signal => signal.kind === 'lifecycle:prepare' && signal.level === 'info'),
+    JSON.stringify(plugin.signals))
+  check('prepublishOnly is in the same source-install-only class',
+    lifecycleSignals({ scripts: { prepublishOnly: 'npm run build' } })
+      .every(signal => signal.level === 'info'),
+    JSON.stringify(lifecycleSignals({ scripts: { prepublishOnly: 'npm run build' } })))
+}
+
+// ---------------------------------------------------------------------------
+// Activation: a bundle written after the process started is not composed
+// ---------------------------------------------------------------------------
+{
+  const fixture = buildFixture({ plugins: [bundlePlugin()], bundles: [PLUGIN] })
+  cleanups.push(fixture.cleanup)
+  const base = { dshHome: fixture.dshHome, dshRoot: fixture.dshRoot, profileName: 'web' }
+
+  // The fixture was written moments ago, so a process that started an hour
+  // earlier cannot have composed this row.
+  const older = audit({ environment: resolveEnvironment({ ...base, hostStartedAt: Date.now() - 3_600_000 }) })
+  console.log('# activation: process predates the install')
+  console.log(`  flag    : ${older.plugins[0].installedAfterHostStart}`)
+  console.log(`  notices : ${older.notices.length}`)
+  console.log()
+  check('a plugin installed after the process started is flagged',
+    older.plugins[0].installedAfterHostStart === true, String(older.plugins[0].installedAfterHostStart))
+  check('a reconfiguration after the process started raises a notice',
+    older.notices.length > 0, JSON.stringify(older.notices))
+  check('the activation flag does not change the compatibility verdict',
+    older.plugins[0].verdict === 'compatible', older.plugins[0].verdict)
+
+  const newer = audit({ environment: resolveEnvironment({ ...base, hostStartedAt: Date.now() + 3_600_000 }) })
+  check('a plugin older than the process start is not flagged',
+    newer.plugins[0].installedAfterHostStart === false, String(newer.plugins[0].installedAfterHostStart))
+  check('no notice is raised when the process postdates the configuration',
+    newer.notices.length === 0, JSON.stringify(newer.notices))
+
+  const undecided = audit({ environment: resolveEnvironment(base) })
+  check('without a process start instant the activation check stays undecided',
+    undecided.plugins[0].installedAfterHostStart === null, String(undecided.plugins[0].installedAfterHostStart))
+  check('without a process start instant no notice is raised',
+    undecided.notices.length === 0, JSON.stringify(undecided.notices))
 }
 
 // ---------------------------------------------------------------------------

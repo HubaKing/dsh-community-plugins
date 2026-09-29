@@ -6,6 +6,32 @@
 
 ---
 
+## Scope
+
+This plugin is **fully adapted to DSH Desktop (DeepSeek Harness Desktop)** and also runs under `dsh web` and other hosts: its skill and both tools register through official public interfaces and use no desktop-only API.
+
+Installation and judgement follow the **profile that is actually running** by default (read at runtime from the official `profileContext` service's `name` / `dir`). `desktop` and `web` are peer profiles whose `dsh.profile.bundles`, dependencies and `compatibility.json` are independent; an install must target the running one, or the files on disk will be correct while the interface and the runtime change not at all. Measured (2026-09-30, Windows, dsh `0.2.0-rc.2`): the desktop application composes the `desktop` profile, and installing a skin into the `web` profile produced no visible effect.
+
+Every `--profile web` in this document is an example; on DSH Desktop substitute `--profile desktop`.
+
+## When a plugin takes effect
+
+A bundle layer is **composed once, at process startup**. `dsh plugin add` only rewrites the profile's `dsh.profile.bundles` and its dependencies; it does not change the running process's graph. "Installed successfully" and "visible in the interface" are therefore two independent facts, and a plugin's behaviour may only be judged after the application has been fully quit and started again.
+
+Three states are independent, and only the third proves a plugin is active:
+
+| State | Location | Meaning |
+|---|---|---|
+| Listed | the profile's `dsh.profile.bundles` | maintained by `dsh plugin add` / `remove` |
+| Composed | the profile's `cordis.yml` | the startup composition product |
+| Loaded | the running process's live graph | the only evidence that a plugin is active |
+
+`dsh_plugin_audit` compares the calling process's start instant against the profile configuration and each installed package, reports an activation notice in the report header, and prints an `activation:` line under the affected plugin: a bundle layer written after that instant is not in that process's graph and takes effect only after a restart. This check is advisory and never changes a compatibility verdict.
+
+The full criteria are in the skill's §7 (when a plugin takes effect) and §8 (the adaptation lines for skin and theme plugins).
+
+---
+
 This bundle adds three things to every session:
 
 1. **A skill** (`dsh-community-plugins`) — how to find plugins through the GitHub `dsh-plugin` topic, curated indexes and npm; how to vet one before installing; how to install through the official `dsh plugin` mechanism; how to verify the result.
@@ -62,7 +88,8 @@ Per plugin it reports:
 | **Are the named exports those imports need still exported?** | the package's declaration entry, walked through `export *` re-exports, unioned with its runtime entry |
 | Registered client slots still defined? | slot contracts extracted from official `packages/client` + `packages/core` source |
 | `inject` service names resolvable? | the live Cordis context |
-| Install-time risk signals? | npm lifecycle scripts, `child_process`, `eval`, remote import, network |
+| Install-time risk signals? | npm lifecycle scripts, graded by install source — `preinstall` / `install` / `postinstall` run for a registry install, `prepare` / `prepublishOnly` only for a git or local install — plus `child_process`, `eval`, remote import, network |
+| **Is it active, as distinct from installed?** | the calling process's start instant against the profile configuration and each installed package: a bundle layer written after that instant is not in the running graph (advisory; never changes a verdict) |
 
 Verdicts are graded, not binary:
 

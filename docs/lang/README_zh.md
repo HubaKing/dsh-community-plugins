@@ -6,6 +6,32 @@
 
 ---
 
+## 适配范围
+
+本插件**全面适配 DSH 桌面版（DeepSeek Harness Desktop）**，同时适用于 `dsh web` 及其他宿主：其 skill 与两个工具均通过官方公开接口注册，不使用任何桌面端专有 API。
+
+安装与判定默认以**正在运行的 profile** 为准（运行时读取官方 `profileContext` 服务的 `name` / `dir`）。`desktop` 与 `web` 属并列 profile，各自的 `dsh.profile.bundles`、依赖与 `compatibility.json` 互相独立；安装操作必须指向正在运行的那一个，否则磁盘状态虽然正确，界面与运行时不会出现任何变化。实测记录（2026-09-30，Windows，dsh `0.2.0-rc.2`）：桌面应用组合的是 `desktop` profile，向 `web` profile 安装皮肤不产生可见效果。
+
+本文档中的 `--profile web` 均为示例写法，在 DSH 桌面版上应替换为 `--profile desktop`。
+
+## 生效时机
+
+bundle 层**仅在进程启动时组合一次**。`dsh plugin add` 只改写 profile 的 `dsh.profile.bundles` 与依赖，不会改变已运行进程的图层，因此「安装成功」与「界面已生效」是两个独立事实，必须完全退出应用并重新启动后，方可评估插件的实际表现。
+
+三处状态互相独立，只有第三处能够证明插件已生效：
+
+| 状态 | 位置 | 说明 |
+|---|---|---|
+| 是否登记 | profile 的 `dsh.profile.bundles` | `dsh plugin add` / `remove` 维护 |
+| 是否被组合 | profile 的 `cordis.yml` | 启动时的组合产物 |
+| 是否加载 | 运行进程的活体图层 | 唯一能证明插件已生效的证据 |
+
+`dsh_plugin_audit` 将调用进程的启动时刻与 profile 配置文件及各插件目录的 mtime 进行比较：晚于该时刻写入的 bundle 层不在进程的图层内，报告会在头部给出提示，并在对应插件行下给出 `activation:` 说明。该判定属提示项，不改变兼容性结论。
+
+完整判据见 skill §7（生效时机）与 §8（皮肤与主题类插件的适配线）。
+
+---
+
 安装本插件后，每个新会话获得三样东西：
 
 1. **一份指南（skill）** —— 如何通过 GitHub `dsh-plugin` 话题、策展索引与 npm 发现插件；安装前如何评估；如何按官方 `dsh plugin` 机制安装；装完如何验证。
@@ -25,7 +51,7 @@ DeepSeek Harness 的插件能力通过两类机制提供：**工具（Tools）**
 
 仅安装市场工具是不够的：`web_search` 描述直观，是模型的默认通用手段；`market_search` 是 DSH 专属工具，agent 默认不知道它的存在、不觉得「安装插件」与其相关，也不了解本机 profile 结构、bundle 机制、评估流程与重启要求。
 
-而只有知识也不够：这个生态里最实际的那个问题——**「升级 dsh 会不会弄坏我装的东西？」**——靠人眼判断是不可靠的，下面那条 rc 预发布规则就是原因。
+而只有知识也不够：这个生态里最实际的那个问题——**「升级 dsh 是否会破坏已安装的插件？」**——靠人眼判断是不可靠的，下面那条 rc 预发布规则就是原因。
 
 ## 为什么做实时探针，而不是兼容性数据集
 
@@ -62,7 +88,8 @@ dsh_plugin_audit({ target: 'dsh-llm-local-token' })   # 只审计一个（包名
 | **这些 import 要的具名导出是否还在导出** | 包的声明入口，递归穿过 `export *`，再与其运行时入口的导出列表取并集 |
 | 注册的 client slot 是否仍有定义 | 从官方 `packages/client` + `packages/core` 源码提取的 slot 契约 |
 | `inject` 服务名是否可解析 | 当前 Cordis 上下文 |
-| 安装期风险信号 | npm lifecycle 脚本、`child_process`、`eval`、远程 import、网络请求 |
+| 安装期风险信号 | npm lifecycle 脚本（按安装来源分级：`preinstall` / `install` / `postinstall` 于 registry 安装时执行；`prepare` / `prepublishOnly` 仅于 git 或本地安装时执行）、`child_process`、`eval`、远程 import、网络请求 |
+| **是否已生效（区别于是否已安装）** | profile 配置文件与各插件目录的 mtime 对比调用进程的启动时刻；晚于启动时刻写入的 bundle 层不在该进程的图层内（提示项，不改变兼容性结论） |
 
 结论是分级的，不是二元的：
 
@@ -154,7 +181,7 @@ dsh_plugin_inspect({ spec: ['pkg-a', 'pkg-b', 'pkg-c'] })    # 一次预筛多�
 | `/absolute.txt`、`C:\…` | 拒绝并报告 |
 | symlink / hardlink 条目 | 直接跳过、绝不创建 —— 后续条目也就无法经由该链接写到外面 |
 | 头部谎报大小 | 读取器停止，而不是越界读 |
-| 解压炸弹 | 单文件、总大小、条目数三重上限，大声失败 |
+| 解压炸弹 | 单文件、总大小、条目数三重上限，显式失败 |
 
 报告还会标出安装期风险，包括 SKILL.md 警告过的那一类：仓库自带的 `install.sh` / `setup.ps1` 直接改写 profile、手工把包链进 `node_modules`，绕过 `dsh plugin` 的依赖管理——之后 `dsh plugin update` 和 `remove` 就管不到它了。
 

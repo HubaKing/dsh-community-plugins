@@ -1,20 +1,25 @@
 ## dsh-community-plugins __VERSION__
 
-为 DeepSeek Harness 提供社区插件生态指南的 bundle 插件：注册 `dsh-community-plugins` skill，并注册两个工具，把插件与本机 dsh 构建逐条比对。纯 JavaScript、单一依赖、无构建步骤、无 UI。
+为 DeepSeek Harness 提供社区插件生态指南的 bundle 插件：注册 `dsh-community-plugins` skill，并注册两个工具，把插件与本机 dsh 构建逐条比对。纯 JavaScript、单一依赖、无构建步骤、无 UI。本版为**全面适配 DSH 桌面版**的文档与判定修订版。
 
 ### 本版要点
 
-- **补齐三项只有实测才能得到的排障与定位**（全部来自一次真实安装的踩坑记录）：
+- **新增「已安装」与「已生效」的判定**（`dsh_plugin_audit`）。bundle 层仅在进程启动时组合一次，因此「安装成功」与「运行进程已加载」是两个独立事实；此前工具只能报告前者，而生态中最常见的误判正是把二者混为一谈。现在审计会把**调用进程的启动时刻**与 profile 配置文件（`package.json`、`cordis.yml`）及各插件目录的 mtime 比较：晚于该时刻写入的 bundle 层不在运行进程中，报告头部给出激活提示，对应插件行下给出 `activation:` 说明。该判定为提示项，不改变兼容性结论；调用方未提供启动时刻时结果保持 `null`，不作推测。
+  - 实测依据（2026-09-30，Windows，dsh `0.2.0-rc.2`，profile `desktop`）：桌面宿主进程启动于 03:31:42，`dsh-theme-kit` 于 03:34:38 写入 profile；对运行中的 HTTP 服务探测 `/dsh-theme-kit-wallpapers/...` 返回 404（未知路由），而 `/`、`/index.html`、`/api/health` 返回 401（路由存在、需鉴权），据此判定该插件的宿主半区未挂载。
 
-  - **安装根与 CLI 的定位**。此前文档只给了一条 `node <dsh 根>/apps/cli/lib/bin.js`，而**打包安装上那个路径并不存在**（`resources/app.asar.unpacked/dsh` 里只有 `node_modules`）。现在写清两种形态：打包安装用应用自带的 `resources/runtime/cli/bin/dsh.cmd`（内部是 `ELECTRON_RUN_AS_NODE=1` + asar 里的 `@deepseek-ai/dsh-desktop-host/lib/cli.js`，其所在目录在部分机器上并不在 PATH），源码 checkout 用 `apps/cli/lib/bin.js`；并给出安装根的搜索顺序，以及「只有源码 checkout 能当审计工具的安装根、纯打包安装会把 API 面检查降级为 `unknown`」这一结论。
+- **lifecycle 脚本按安装来源分级**。`preinstall` / `install` / `postinstall` 在 registry 安装时执行，`prepare` / `prepublishOnly` 仅在 git 或本地（`link:`）安装与发布流程中执行。此前四者一律按安装期高危项报告，属于误报：实测中三个包声明了 `prepare` 而 `dsh plugin add` 未执行任何 lifecycle 脚本。现在前者报 `high`，后者报 `info` 并注明适用来源。
 
-  - **要包名就搜 registry，别从 GitHub 反查**。GitHub 未认证搜索实测 8 个候选后开始 403，而 registry 的 `/-/v1/search` 一次返回 100 条包名+描述+版本+发布日。推荐顺序：先 registry 拿包名与候选池，再用 GitHub topic 补 stars / 活跃度 / 许可证全文。
+- **文档新增「适配范围」与「生效时机」两节**：明确本插件全面适配 DSH 桌面版，安装与判定默认跟随正在运行的 profile（`desktop` 与 `web` 属并列 profile，`bundles` / 依赖 / `compatibility.json` 互相独立）；并给出「是否登记 / 是否被组合 / 是否加载」三处独立状态的判据，说明只有活体图层能证明插件已生效。中英文 README 同步。
 
-  - **`dsh plugin remove` 报错却什么都没删**。profile 的 `pnpm-workspace.yaml` 里残留的 `patchedDependencies` 条目会让 pnpm 报 `ERR_PNPM_UNUSED_PATCH` 并**整体回滚**（包、`node_modules`、`dsh.profile.bundles` 原封不动）。文档给出成因、处置步骤与事后该确认的三处；同时写明 `add` 被版本门禁拒绝也是原子失败，什么都没装。
+- **SKILL.md 全文改为标准书面语**，同时纳入本轮实测得到的新结论：
+  - 版本门禁的精确版本豁免流程（`allow-version` / `revoke-version`，写入 `compatibility.json`，粒度为「包版本 × dsh 版本」），以及审计报告 `gate:` 行的豁免显示形态；
+  - **包自述文档可能与 manifest 冲突，一律以 manifest 的 peer 区间与门禁实际比对结果为准**（实测：某仓库 INSTALL 声明支持 0.1.7 与 0.2，而包内 peer 上界 `<0.1.8-0` 排除 0.2）；
+  - monorepo 的 git 安装形式 `github:<owner>/<repo>#path:/<subdir>`，以及仓库根目录无 `package.json` 时该形式的不可用性；
+  - client-only 包（仅 `dsh.client`、无 `dsh.bundle`）不进入 `dsh.profile.bundles`，需宿主侧接线（皮肤中心一类加载器或 profile 自身 patch 层）；
+  - 皮肤中心路线（`$DSH_HOME/skins/<id>/` 纯资产目录、加入与切换无需重启）与原生皮肤包属两条互不兼容的适配线，不得装入同一 profile；
+  - 管理器型插件首次启动先禁用其管理的全部皮肤时，首次重启后仍为官方默认外观属预期行为。
 
-- **发布说明改为仓库内文件**（`.github/release-notes.md`）。此前的说明内嵌在 workflow 里、作为 YAML **折叠标量**（`>-`），而项目符号之间没有空行，折叠后整段列表被并成**一个段落**——v0.4.0 与 v0.5.0 的 Release 正文都是这个形态。现在说明以普通 Markdown 文件存放（`__VERSION__` 占位），发布步骤用 `sed` 替换版本号后由 `gh release create --notes-file` 读取：渲染结果与仓库里写的**逐字符一致**（已校验），并且可评审、可 diff。
-
-- 注：**判定口径与工具行为在本版没有变化**。上一版（v0.5.0）新增的预筛模式 `dsh_plugin_inspect({ spec: [...] })`（只读 registry 文档、不下载包内容）与 `gate:` 版本门禁判定仍然照旧，细节见 v0.5.0 的发布说明。
+- 注：判定口径中**除上述两项外没有其他变化**。v0.5.1 的安装根与 CLI 定位、`patchedDependencies` 残留导致 `remove` 整体回滚、预筛模式与发布年龄处理等结论仍然照旧。
 
 ### 安装
 
@@ -34,26 +39,29 @@ dsh plugin --profile web add link:"${DSH_HOME:-~/.dsh}/plugins/dsh-community-plu
 dsh plugin --profile web add @hubaking/dsh-community-plugins
 ```
 
+> 上列 `--profile web` 均为示例；**在 DSH 桌面版上运行的是 `desktop` profile，须替换为 `--profile desktop`**。向非运行中的 profile 安装不会产生任何可见效果。
+
 > `dsh` 不在 PATH 时，形态有两种：打包安装用 `& "<安装根>\resources\runtime\cli\bin\dsh.cmd"`，源码 checkout 用 `node <checkout>/apps/cli/lib/bin.js`。完整定位方法见 skill 的 §4。
 
 > **npm 形态必须带 `@hubaking/` scope**：无 scope 的同名包属于另一个项目（funcodingdev），`add dsh-community-plugins` 会装错。
 
 ### 使用
 
-1. 安装后**重启 dsh**（bundle 层在启动时组合；改 `index.js` / `lib/` 必须重启）
+1. 安装后**完全退出应用并重新启动**（bundle 层在启动时组合一次；改 `index.js` / `lib/` 同样必须重启）
 2. 新开一个会话，`<available_skills>` 出现 `dsh-community-plugins`、工具列表出现 `dsh_plugin_audit` 与 `dsh_plugin_inspect` 即生效
 3. 装某个包**之前**问：「这个包能装吗？」——agent 会调用 `dsh_plugin_inspect`（联网，把 tarball 拉下来审）；候选多时先让它传数组做预筛
-4. 已经装了的，或升级 dsh **之后**问：「我装的插件现在怎么样？」——agent 会调用 `dsh_plugin_audit`（离线）
+4. 已经装了的，或升级 dsh **之后**问：「我装的插件现在怎么样？」——agent 会调用 `dsh_plugin_audit`（离线）；报告头部的激活提示用于判断是否存在「已安装但未生效」
 
 ### 验证
 
-- `${DSH_HOME:-~/.dsh}/profiles/web/package.json` 的 `dsh.profile.bundles` 含包名
-- 会话 skill 目录出现本 skill
-- `dsh_plugin_audit({})` 返回本机全部第三方插件的结论
+- profile 的 `package.json` 中，`dsh.profile.bundles` 含包名
+- 会话 skill 目录出现本 skill；工具列表出现两个工具
+- `dsh_plugin_audit({})` 返回本机全部第三方插件的结论；若 profile 在进程启动后被改写，报告头部出现激活提示
 - `dsh_plugin_inspect({ spec: '<某个包>' })` 返回下载、校验与判定结果，且临时目录已清空
 - `dsh_plugin_inspect({ spec: ['包 a', '包 b'] })` 返回预筛结果，且全程未下载任何包内容
+- 九个测试套件全部通过（`npm test`，本版共 433 项检查）
 
 ### 文档
 
-- README 中英双语（English / 中文），语言切换栏在文档顶部
+- README 中英双语（English / 中文），语言切换栏在文档顶部；两版均含「适配范围」与「生效时机」
 - 官方文档：[打包与安装插件](https://deepseek-harness.github.io/deepseek-harness/develop/publish) · [生命周期](https://deepseek-harness.github.io/deepseek-harness/develop/framework/)

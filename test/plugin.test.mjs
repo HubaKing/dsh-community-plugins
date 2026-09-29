@@ -301,8 +301,12 @@ check('the skill points at the official cordis_inspect tooling',
   skillText.includes('cordis_inspect'), 'SKILL.md no longer mentions the official runtime inspector')
 check('the skill states the runtime inspector\'s capability explicitly',
   skillText.includes('Slots.listSubTree'), 'SKILL.md lost the client-slot query path')
+// The framing is asserted through two independent formulations rather than one
+// verbatim sentence, so a register change cannot silently delete the distinction
+// while a wording change alone does not fail the guard.
 check('the skill explains the static-vs-runtime division of labour',
-  skillText.includes('和本机构建对不对得上'), 'SKILL.md lost the division-of-labour framing')
+  skillText.includes('与本机构建是否一致') && skillText.includes('互不替代'),
+  'SKILL.md lost the division-of-labour framing')
 // The tool reads only the build installed here, so promising to predict a future
 // upgrade would be a lie. This guard exists because an earlier version of the
 // skill (and of the tool description) made exactly that claim.
@@ -312,6 +316,17 @@ check('the skill never promises to predict a future upgrade',
 check('the skill documents the boot-failure layer checks',
   skillText.includes('failed to read overlay') && skillText.includes('declares no dsh.bundle'),
   'SKILL.md lost the guidance for a profile that will not boot')
+// The desktop adaptation statement and the activation discipline are what this
+// release adds; both are load-bearing, so both are guarded.
+check('the skill states full adaptation to DSH Desktop',
+  skillText.includes('全面适配 DSH 桌面版') && skillText.includes('正在运行的 profile'),
+  'SKILL.md lost the desktop adaptation statement')
+check('the skill states that a bundle layer is composed at startup only',
+  skillText.includes('bundle 层仅在进程启动时组合'),
+  'SKILL.md lost the activation discipline')
+check('the skill separates the native skin package line from the skin-centre line',
+  skillText.includes('不得装入同一 profile'),
+  'SKILL.md lost the two-adaptation-lines warning')
 
 const blocks = tool.output.render({}, report)
 check('render returns content blocks',
