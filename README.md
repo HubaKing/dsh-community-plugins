@@ -57,6 +57,7 @@ Per plugin it reports:
 |---|---|
 | **Can its bundle layer be mounted?** | whether `dsh.bundle.patch` exists on disk, and whether the package is named in `dsh.profile.bundles` |
 | `peerDependencies` ranges satisfied? | the version of each package actually on this machine, including `vendor/` |
+| **Will dsh's own version gate load it?** | `evaluatePluginCompatibility`'s rule: only `@deepseek-ai/dsh*` peers, compared against the *running dsh version* with `includePrerelease`, admitted again by an exact-version grant in `compatibility.json` |
 | Imported `@deepseek-ai/*` packages still exist? | the dsh install root (`packages/`, `vendor/`, `node_modules/@deepseek-ai`) |
 | **Are the named exports those imports need still exported?** | the package's declaration entry, walked through `export *` re-exports, unioned with its runtime entry |
 | Registered client slots still defined? | slot contracts extracted from official `packages/client` + `packages/core` source |
@@ -68,7 +69,7 @@ Verdicts are graded, not binary:
 | Verdict | Meaning |
 |---|---|
 | `compatible` | every check this tool can perform passed |
-| `at-risk` | a declared range no longer matches or its layer is not composed in, though the code may still run — **the normal state of this ecosystem** |
+| `at-risk` | a declared range no longer matches, its layer is not composed in, or dsh's version gate will refuse to load the row unless it is exempted — **the normal state of this ecosystem**. A gate refusal is not a boot failure: the preflight disables that one row and the profile still starts |
 | `incompatible` | hard evidence: a package, export or slot it needs is gone from this build, or its bundle layer cannot be mounted |
 | `unknown` | something needed a check that cannot be done offline; the reason is always stated |
 
@@ -128,7 +129,10 @@ dsh_plugin_inspect({ spec: 'dsh-llm-local-token' })          # npm, latest
 dsh_plugin_inspect({ spec: '@scope/pkg@^1.2' })              # npm, a range
 dsh_plugin_inspect({ spec: 'github:owner/repo#v1.2.0' })     # a repository
 dsh_plugin_inspect({ spec: 'https://host/pkg.tgz' })         # a tarball URL
+dsh_plugin_inspect({ spec: ['pkg-a', 'pkg-b', 'pkg-c'] })    # screen many candidates at once
 ```
+
+`spec` as an **array** is the screening mode, and it downloads **no package bytes at all**: it reads the registry documents only, judges the declared peer ranges, dsh's version gate and the manifest's lifecycle scripts, and states what it could not see. It exists because "which of these forty candidates can I actually install here?" used to cost forty downloads. Use a single `spec` string on the survivors for the full audit.
 
 **This is the only part of the plugin that uses the network, and it says so in its own name, its description, and its output.** What it does:
 

@@ -39,6 +39,8 @@ import { dirname, join } from 'node:path'
  * @property {Record<string, string>} [sourceFiles] - relative to `<root>`, for slot extraction.
  * @property {string} [dshVersion]
  * @property {object} [profileManifest] - merged over the generated profile manifest.
+ * @property {Record<string, string[]>} [compatibility] - written as the profile's `compatibility.json`, the
+ *   exact-version grants dsh's own version gate consults.
  */
 
 /**
@@ -68,6 +70,10 @@ export function buildFixture(options = {}) {
     mkdirSync(dir, { recursive: true })
     writeJson(join(dir, 'package.json'), plugin.manifest ?? { name: plugin.name, version: '1.0.0' })
     writeFiles(dir, plugin.files)
+  }
+
+  if (options.compatibility !== undefined) {
+    writeJson(join(profileDir, 'compatibility.json'), options.compatibility)
   }
 
   // The launcher heals this directory at startup; out-of-tree plugins resolve

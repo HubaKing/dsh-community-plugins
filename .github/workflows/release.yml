@@ -54,12 +54,14 @@ jobs:
 
             为 DeepSeek Harness 提供社区插件生态指南的 bundle 插件：注册 `dsh-community-plugins` skill，并注册两个工具，把插件与本机 dsh 构建逐条比对。纯 JavaScript、单一依赖、无构建步骤、无 UI。
 
-            ### 本版要点（P1 两项）
+            ### 本版要点
 
-            - **新增 `dsh_plugin_inspect` —— 安装前审计（唯一联网的工具）**：下载发布 tarball、用 registry 公布的 `integrity` 校验、解包到临时目录、判定后删除。**不安装、不写 profile、不执行 lifecycle 脚本**（`postinstall` 报成高危发现而非服从）。支持 npm 包名 / `name@range` / `github:owner/repo#ref` / http(s) tarball 直链。解包器为手写加固版：`../` 穿越、绝对路径、symlink/hardlink 条目、谎报大小的头部、解压炸弹一律拒绝并报告。另会标记仓库自带的 `install.sh` / `setup.ps1`——那类脚本绕过 `dsh plugin` 的依赖管理。
-            - **新增符号级核对**：不再只比对"包还在不在"，而是核对插件 `import` 的**具名导出**是否仍被导出。逐包递归走完声明入口的 `export *` 图（含 TypeScript 保留的 `.ts` 后缀 specifier），再与运行时入口的导出列表取并集。**只有图完整解析、且该名字在声明与运行时入口都找不到时才报 `incompatible`**；图不完整一律 `unknown` 并列出没解析到的 re-export —— "我没解析到"不等于"它没了"。
-            - **两个工具刻意分开**：离线审计承诺不联网，不提供联网开关——有条件的承诺等于没有承诺。
-            - **测试从 145 条增至 343 条**：新增 `symbols` / `tar` / `inspect` 三个套件。pre-install 工具对**本地 HTTP server** 跑端到端（不依赖 npm 在线）；符号核对在真实机器上做自洽性 oracle——279 个官方包、1874 个运行时导出名逐一核对、0 个未确认。
+            - **新增预筛模式 `dsh_plugin_inspect({ spec: [...] })`**：一次给多个候选包，**一个字节的包内容都不下载**——只读 registry 文档，判定声明的 peer 区间、dsh 的版本门禁与 manifest 里的 lifecycle 脚本，并在 `limits` 里写明看不到什么。判定与措辞与 `dsh_plugin_audit` 同源（同一批函数），两处不会说法不一。
+            - **判定 dsh 自带的版本门禁**：`0.2.0-rc.2` 起 `dsh plugin add` 会拒绝 peer 不匹配的包，启动时也会**只禁用那一行**（profile 仍照常启动）。工具现在逐条复刻 `evaluatePluginCompatibility` 的判据（只管 `@deepseek-ai/dsh*`、跟运行中的 dsh 版本比、`includePrerelease` 语义、`compatibility.json` 里的精确版本豁免），输出 `gate:` 行并给出可直接粘贴的 `allow-version` 命令。
+            - **修复：profile 组成每次调用重读**。此前按进程缓存 `dsh.profile.bundles`，导致刚 `dsh plugin add` 成功的包被报成 `NOT in dsh.profile.bundles` —— 而这正是安装流程依赖的那一步。
+            - **修复：带 target 的审计不再误报**。此前只把目标包当作已装集合，其余 bundle 会被报成「the profile does not boot」；现在始终以完整已装集合判定 profile 组成。
+            - **`peers:` 汇总行与 client 侧 inject**：满足的 peer 不再沉默（"没有发现"与"没有声明"是两件事）；由浏览器半声明的 `slots` / `theme` / `locale` 单独列出，不再因此压低 verdict。
+            - **测试新增 `screen` 套件**，并为版本门禁、profile 重读、target 审计各补了回归测试
             - 判定分级不变：`incompatible` / `at-risk` / `unknown` / `compatible`
             - `inject` 仍为 `['skills']`；没有 `tools` 服务的部署上两个工具静默降级，skill 始终可用，且一个工具注册失败不会带走另一个
 

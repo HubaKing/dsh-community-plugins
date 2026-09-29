@@ -57,6 +57,7 @@ dsh_plugin_audit({ target: 'dsh-llm-local-token' })   # 只审计一个（包名
 |---|---|
 | **bundle 层能否挂载** | `dsh.bundle.patch` 指向的文件是否存在，以及该包是否登记在 `dsh.profile.bundles` |
 | `peerDependencies` 区间是否满足 | 本机各包的真实版本（含 `vendor/`） |
+| **dsh 自带的版本门禁会不会加载它** | `evaluatePluginCompatibility` 的判据：只管 `@deepseek-ai/dsh*` 这类 peer，且是跟**运行中的 dsh 版本**比（`includePrerelease` 语义），冲突后只有 `compatibility.json` 里的精确版本授权才能放行 |
 | import 的 `@deepseek-ai/*` 包是否仍存在 | dsh 安装根（`packages/`、`vendor/`、`node_modules/@deepseek-ai`） |
 | **这些 import 要的具名导出是否还在导出** | 包的声明入口，递归穿过 `export *`，再与其运行时入口的导出列表取并集 |
 | 注册的 client slot 是否仍有定义 | 从官方 `packages/client` + `packages/core` 源码提取的 slot 契约 |
@@ -68,7 +69,7 @@ dsh_plugin_audit({ target: 'dsh-llm-local-token' })   # 只审计一个（包名
 | 结论 | 含义 |
 |---|---|
 | `compatible` | 本工具能做的检查全部通过 |
-| `at-risk` | 声明的区间已不匹配、或层没被组合进去，但代码可能仍能跑 —— **这是本生态的常态** |
+| `at-risk` | 声明的区间已不匹配、层没被组合进去，**或 dsh 的版本门禁会在启动时禁用它（除非先授权豁免）** —— **这是本生态的常态**。门禁禁用不等于启动失败：preflight 只禁用那一行，profile 照常启动 |
 | `incompatible` | 硬证据：它需要的包、导出或 slot 在本机已不存在，**或它的 bundle 层根本无法挂载** |
 | `unknown` | 有项检查无法离线完成，且必定说明原因 |
 
@@ -128,7 +129,10 @@ dsh_plugin_inspect({ spec: 'dsh-llm-local-token' })          # npm，最新版
 dsh_plugin_inspect({ spec: '@scope/pkg@^1.2' })              # npm，指定区间
 dsh_plugin_inspect({ spec: 'github:owner/repo#v1.2.0' })     # 仓库
 dsh_plugin_inspect({ spec: 'https://host/pkg.tgz' })         # 直链 tarball
+dsh_plugin_inspect({ spec: ['pkg-a', 'pkg-b', 'pkg-c'] })    # 一次预筛多个候选
 ```
+
+`spec` 传**数组**就是预筛模式，**一个字节的包内容都不下载**：只读 registry 文档，判定声明的 peer 区间、dsh 的版本门禁与 manifest 里的 lifecycle 脚本，并明写它看不到什么。它存在的原因是「这几十个候选里到底哪些能装」以前要付出几十次下载的代价。对通过预筛的包再用单个 `spec` 字符串做完整审计。
 
 **这是本插件唯一联网的部分，而它在名字、描述和输出里都写明了这一点。** 它做的事：
 

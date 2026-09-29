@@ -40,8 +40,10 @@ dsh_plugin_audit({ target: 'dsh-llm-local-token' })   # 只审计一个（包名
 判读结论：
 
 - **`incompatible`** —— 硬证据：它需要的包、**具名导出**或 slot 在本机已不存在，**或它的 bundle 层根本无法挂载**（下表的启动失败项）。
-- **`at-risk`** —— 声明的区间已不匹配、或层没被组合进去，但代码可能仍能跑。**这是本生态的常态**：pnpm 默认不阻断 peer 不满足的安装（`strictPeerDependencies` 默认 false），所以"装上了"从来不等于"区间满足"。要不要继续用由用户判断。
+- **`at-risk`** —— 声明的区间已不匹配、层没被组合进去，**或 dsh 自带的版本门禁会在启动时禁用它**。这是本生态的常态，但要注意 dsh 版本的差别：**`0.2.0-rc.2` 起自带的门禁会让 `dsh plugin add` 直接拒绝** peer 不匹配的包（见 §3「版本门禁」与 §4），所以旧文档里"pnpm 不阻断、装得上"的说法在新版本上不再成立。
 - **`unknown`** —— 需要联网或 client 侧才能确认的项（见 §3「工具做不到什么」）。
+
+**两条关于"沉默"的纪律**：报告里出现 `peers: N declared …` 与 `gate: …` 两行是刻意的——**「没有任何 peer 发现」和「根本没声明 peer」是两件事**，只打印失败项会让它们看起来一样。`gate:` 行说的是 dsh 自己会不会加载这一行（见下）。
 
 **符号级核对怎么读**：`incompatible` 里的「does not export」是有条件的硬结论——只有当那个包的导出图**完整解析**、且该名字在声明与运行时入口里都找不到时才会报。图不完整时会报 `unknown` 并列出没解析到的 re-export。这条区别是本工具的核心纪律：**「我没解析到」不等于「它没了」**。实测（2026-09，dsh `0.1.5-rc.1`）：279 个官方包，276 个图完整解析，1874 个运行时导出名逐一核对、0 个未确认；剩下 3 张图报 `unknown`。
 
@@ -75,7 +77,10 @@ dsh_plugin_inspect({ spec: 'dsh-llm-local-token' })          # npm，最新版
 dsh_plugin_inspect({ spec: '@scope/pkg@^1.2' })              # npm，指定区间
 dsh_plugin_inspect({ spec: 'github:owner/repo#v1.2.0' })     # 仓库
 dsh_plugin_inspect({ spec: 'https://host/pkg.tgz' })         # tarball 直链
+dsh_plugin_inspect({ spec: ['pkg-a', 'pkg-b', 'pkg-c'] })    # 预筛多个候选（不下载包内容）
 ```
+
+**`spec` 传数组 = 预筛模式**：候选多的时候（例如你从 topic 检索到几十个皮肤）先用它把池子收窄，再对通过的包用单个 `spec` 做完整审计。它**只读 registry 文档，一个字节的包内容都不下载、不解包、不读代码**，因此能判的只有三样：声明的 peer 区间、dsh 的版本门禁、manifest 里的 lifecycle 脚本；看不到的（bundle patch 文件、slot、具名导出、inject 服务名）在报告的 `limits` 里一次讲清，不会猜。判定与措辞跟 `dsh_plugin_audit` 完全同源（同一批函数），两处不会说法不一。
 
 它做的事，以及**为什么值得在装之前花这一次网络**：
 
@@ -302,7 +307,34 @@ node -p "require('<dsh 根>/packages/client/ui-slots/package.json').version"
    为什么：`^0.1.0-rc.5` 展开为 `>=0.1.0-rc.5 <0.2.0-0`，比较器的 tuple 是 `[0,1,0]` 与 `[0,2,0]`；而 `0.1.5-rc.1` 的 tuple 是 `[0,1,5]`——**两者都不匹配**，所以它被预发布规则挡下。`>=0.1.0-rc.5` 的上界挡不住它，下界也不挡，挡它的是这条预发布规则。
    （上表用 npm 官方 `semver` 7.7.4 实测得出；pnpm 用的是同一套语义。）
 
-   ⚠️ **因此：pnpm 报 `Issues with peer dependencies found` 时，它是对的。不要"忽略这个警告"。** pnpm 默认不阻断 peer 不满足的安装，所以插件能装上，但区间确实不满足——这两件事互不矛盾。
+   ⚠️ **因此：pnpm 报 `Issues with peer dependencies found` 时，它是对的。不要"忽略这个警告"。** 但"区间不满足"的后果按 dsh 版本分两条完全不同的路：
+
+   - **dsh 有版本门禁时（实测 `0.2.0-rc.2` 起）→ 装不上**。`dsh plugin add` 会打印 `installation rejected: … is incompatible with dsh …` 并**什么都没装**。要装就必须先授权精确版本豁免（见下）。
+   - **更早的版本 → 装得上但区间确实不满足**，代码可能仍能跑。此时 pnpm 的警告与"装上了"互不矛盾。
+
+   不要用"pnpm 默认不阻断"来推断当前 dsh 的行为——那是 pnpm 的行为，不是 dsh 门禁的行为。
+
+   **版本门禁（`0.2.0-rc.2` 起自带）**——它和 pnpm 的 peer 检查不是一回事，判据必须按源码来（`packages/boot/app-boot/src/plugin-compatibility.ts:61-88`）：
+
+   | 维度 | pnpm 的 peer 检查 | dsh 的版本门禁 |
+   |---|---|---|
+   | 管哪些 peer | 全部 | **只有 `@deepseek-ai/dsh` 与 `@deepseek-ai/dsh-*`**；`@deepseek-ai/cordis`、`@deepseek-ai/schemastery`、`react` 都不在其内 |
+   | 拿什么比 | 每个包**实际安装**的版本 | **运行中的 dsh 版本**（每个 range 都跟它比） |
+   | 预发布语义 | 默认规则（见上表） | **`includePrerelease: true`**，所以 `>=0.1.0` 会**接受** `0.2.0-rc.2`，而默认规则会拒绝 |
+   | `workspace:^` / `workspace:~` / `workspace:*` | 不适用 | 视为"当前 runtime"，永远满足 |
+   | 冲突后果 | 警告，不阻断安装 | **只禁用这一行**（`row.disabled = true`），**profile 照常启动**；该插件永远不加载 |
+
+   豁免存在 profile 的 `compatibility.json`（`PROFILE_COMPATIBILITY_FILENAME`），键是**精确** `包名@版本`，值是允许的 **dsh 精确版本**列表，粒度是"这个包的这个版本 × 这个 dsh 版本"：
+
+   ```bash
+   dsh plugin --profile web allow-version <包名@版本> --dsh-version <本机 dsh 版本> --accept-risk
+   dsh plugin --profile web revoke-version <包名@版本> --dsh-version <本机 dsh 版本>
+   dsh plugin --profile web version-exemptions      # 看当前已授权什么
+   ```
+
+   `allow-version` 必须显式带 `--accept-risk`（等于承认"可能崩溃或丢数据"），且 `--dsh-version` 必须是**本机正在运行的**那个版本，否则报错。文件损坏或含非法记录时**不授权任何东西但也不阻止启动**，且此时写入会被拒（要先手工修）。
+
+   ⚠️ **因此"at-risk"要再分一层**：声明区间不满足**且**命中门禁、**且**没有对应豁免 = **这一行现在就不会加载**（profile 仍在跑）；有豁免 = 会加载。`dsh_plugin_audit` 的 `gate:` 行直接告诉你落在哪一边，并给出可直接粘贴的 `allow-version` 命令。
 
 3. **更进一步：确认它调用的具体 API 还存在**。分两层：
 
@@ -333,6 +365,8 @@ node -p "require('<dsh 根>/packages/client/ui-slots/package.json').version"
 - **client slot 的运行时形状**：工具只能读官方**源码**里的 slot 名集合，读不到浏览器端实际的 slot 树。名字对不上就是硬信号；名字对得上也不保证 props 契约没变。**但这不等于查不到**——官方 `cordis_inspect_query` 的 `Slots.listSubTree` 能在运行时拿到真实的 slot 树与 props（见 §2）。所以「某 slot 的 props 契约到底变没变」这类问题应该问官方 inspect，而不是本工具。
 - **导出的具体符号，边界在哪**：核对**是**做了，但只在能证明的范围内。`dsh_plugin_audit` / `dsh_plugin_inspect` 会走完声明图并核对运行时导出列表；只有图**完整解析**、且该名字在声明与运行时入口都找不到时，才报 `incompatible`。图不完整（某个 re-export 指向的包不在本机、没有 `types` 入口、`export =` 形式……）时一律报 `unknown` 并列出原因。类型专用 import（`import type …`、行内 `type X`）不参与核对——它们被构建期抹掉，不可能导致运行期失败。**CJS 里靠 `require()` 取属性的用法**（`require('pkg').Foo`）也拿不到名字，不参与核对。
 - **不在本机的包**：如 `react`、外部 npm 依赖，本机查不到版本就无法判定区间。
+- **`gate:` 行比较的是哪个版本**：门禁在源码里用的是 **`@deepseek-ai/dsh-app-boot` 自己的 package.json 版本**（`getDshRuntimeVersion()`），工具读的是**安装根 `package.json` 的 version**。本机实测两者一致（都是 `0.2.0-rc.2`）；若某天不一致，`gate:` 行可能偏一格，此时以 `dsh plugin add` 的实际报错为准。
+- **client 侧的 `inject` token**：`[bundle+client]` 插件里由**浏览器半**声明的服务名（实测形态：`slots`、`theme`、`locale`）跑在渲染进程自己的 Cordis 上下文里，**宿主 context 永远解析不到**。工具会把这些单独列成 `client-side injects (…)` 并且**不因此压低 verdict**——否则一个能正常工作的主题会被误报成 `unknown`。可核对的 client 契约是 slot 名（工具核）。
 - **`ctx.<service>` 的静态注册表**：服务名在运行时才能确认；运行时也拿不到时会报 `unknown`。
 - **没有 dsh 源码树时的"包缺失"判定**：此时包集合只来自 `profiles/node_modules`（dsh 启动时修复的运行时解析图），它**比源码树少**（尤其缺 client 侧包）。所以工具会把"某包不存在"降级为 `at-risk` 并注明需复核，而不是断言它被移除。有源码 checkout 时判定才是硬的。
 - **`dsh_plugin_inspect` 的固有边界**：它看到的是 tarball 里的静态文件，**看不到构建产物**。若仓库只发布源码、由安装脚本现场构建，它审的就不是最终运行的那份代码——这种情况报告里的 `installer-script` 信号会提醒你。它也不做恶意代码判定，只做**风险信号**（lifecycle、`eval`、网络、shell、自带安装脚本），判读由你负责。
@@ -352,7 +386,7 @@ node -p "require('<dsh 根>/packages/client/ui-slots/package.json').version"
 
 ## 4. 安装插件（含提速原则）
 
-**装之前先看权限与内容，再决定装不装**（§3）。想省事就让工具做：`dsh_plugin_inspect({ spec: '<包名>' })` 会把 tarball 拉下来，核对 registry 的 integrity，走完层完整性、peer 区间、具名导出、slot 契约与安装期风险，然后删掉临时目录——**不装、不写 profile、不跑 lifecycle 脚本**。看到 `incompatible` 就别装；看到 `at-risk` 把原因讲给用户听。
+**装之前先看权限与内容，再决定装不装**（§3）。想省事就让工具做：`dsh_plugin_inspect({ spec: '<包名>' })` 会把 tarball 拉下来，核对 registry 的 integrity，走完层完整性、peer 区间、**dsh 版本门禁（会直接预告 `dsh plugin add` 会不会被拒）**、具名导出、slot 契约与安装期风险，然后删掉临时目录——**不装、不写 profile、不跑 lifecycle 脚本**。看到 `incompatible` 就别装；看到 `gate: DENIED` 就是**装不上**（除非先授权豁免）；看到 `at-risk` 把原因讲给用户听。
 
 机制依据官方文档（[打包与安装插件](https://deepseek-harness.github.io/deepseek-harness/develop/basic/publish)、[生命周期](https://deepseek-harness.github.io/deepseek-harness/develop/framework/)）。先**判断安装形态**（决定怎么挂载与是否需重启）：
 
@@ -405,8 +439,13 @@ node "<dsh 根>/apps/cli/lib/bin.js" plugin --profile web list   # 应列出该�
 
 1. `dsh plugin --profile web list` 能列出该包
 2. profile `package.json`：bundle 插件 → `dsh.profile.bundles` 数组含包名；纯 cordis 插件 → `cordis.patch.yml` 含挂载行
-3. **核对兼容性**：跑 `dsh_plugin_audit({ target: '<包名>' })`，确认 verdict 与 blocker/risk 项，把风险如实告知用户。（装**之前**想先看一眼，就用 `dsh_plugin_inspect`——它联网，会把 tarball 拉下来审，结论口径与审计一致。）
-4. **确认层能挂载**（这一步能挡住"装完 dsh 起不来"）：`dsh_plugin_audit` 输出的 `layer` 行必须是 `readable` 且 `in dsh.profile.bundles`。若显示 `MISSING`，说明包里没有它声明的 patch 文件；若显示 `NOT in dsh.profile.bundles`，说明层不会被应用——**在重启 dsh 之前修掉**，否则前者会让 profile 直接启动失败。成因通常是绕开 `dsh plugin add` 装了包
+3. **核对兼容性**：跑 `dsh_plugin_audit({ target: '<包名>' })`，确认 verdict 与 blocker/risk 项，把风险如实告知用户。**重点看 `gate:` 那一行**：它回答"dsh 到底会不会加载这个插件"。
+   - `gate: DENIED …` = 门禁会禁用它（profile 仍启动，但插件永不加载），行内已给出可直接粘贴的 `allow-version` 命令；要不要授权由用户决定。
+   - `gate: every declared @deepseek-ai/dsh* range admits dsh …` / `no @deepseek-ai/dsh* peer ranges declared` = 门禁不会拦。
+   - `peers: N declared …` 一并看：**分不清"没有发现"和"没有声明"就会误判**。
+   （装**之前**想先看一眼，就用 `dsh_plugin_inspect`——它联网，会把 tarball 拉下来审，还会直接预告 `dsh plugin add` 会不会被拒；结论口径与审计一致。）
+4. **确认层能挂载**（这一步能挡住"装完 dsh 起不来"）：`dsh_plugin_audit` 输出的 `layer` 行必须是 `readable` 且 `in dsh.profile.bundles`。若显示 `MISSING`，说明包里没有它声明的 patch 文件；若显示 `NOT in dsh.profile.bundles`，说明层不会被应用——**在重启 dsh 之前修掉**，否则前者会让 profile 直接启动失败。成因通常是绕开 `dsh plugin add` 装了包。
+   ⚠️ 计划顺序是「先 `add` 再审计」；工具每次调用都重读 profile 的 `package.json` 与 `compatibility.json`，所以刚 `add` 完立刻审计**不会**看到过期的 bundles 列表（早期版本会按进程缓存它，症状是刚装好的包显示 `NOT in dsh.profile.bundles`）。若仍显示 `NOT in dsh.profile.bundles` 而 `package.json` 里明明有，先核对 profile 路径是否是你改的那个。
 5. **供应链复验（可选但推荐）**：比对落盘文件与审计过的产物是否同一份——npm 装的用 `npm pack` / registry tarball 下载解包后比 SHA-256：
    ```bash
    node -e "console.log(require('crypto').createHash('sha256').update(require('fs').readFileSync('<安装后路径>/lib/client.js')).digest('hex'))"

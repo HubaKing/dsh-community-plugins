@@ -10,6 +10,8 @@
  * Run: node test/fixtures.test.mjs
  */
 
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { buildFixture, patchBodyFor, SLOT_SOURCE } from './fixtures.mjs'
 import { audit, resolveEnvironment } from '../lib/audit.js'
 
@@ -178,14 +180,21 @@ function bundlePlugin(overrides = {}, files = {}) {
 }
 
 {
+  // The runtime version has to admit the range too: `@deepseek-ai/dsh-llm` is in
+  // the version gate's namespace, and the gate compares it against the running
+  // dsh version rather than against the installed package. Keeping the two in
+  // agreement here is what makes this test about the peer check.
   const { result } = auditFixture({
     plugins: [bundlePlugin({ peerDependencies: { '@deepseek-ai/dsh-llm': '^0.1.5' } })],
     bundles: [PLUGIN],
     officialPackages: { '@deepseek-ai/dsh-llm': '0.1.5' },
+    dshVersion: '0.1.5',
   })
   const plugin = result.plugins[0]
   check('a satisfied peer range is compatible', plugin.verdict === 'compatible', plugin.verdict)
   check('a satisfied peer range produces no risk', plugin.risks.length === 0, plugin.risks.join('; '))
+  check('the gate agrees with a satisfied range', plugin.gate.applicable === true && plugin.gate.denied === false,
+    JSON.stringify(plugin.gate))
 }
 
 // ---------------------------------------------------------------------------
@@ -262,6 +271,33 @@ function bundlePlugin(overrides = {}, files = {}) {
   check('a slot that still exists upstream is not a finding',
     result.plugins[0].verdict === 'compatible',
     [...result.plugins[0].blockers, ...result.plugins[0].risks].join('; '))
+}
+
+{
+  // The build emits `packages/client/*/lib/**` beside the `src/` it came from,
+  // and the traversal walks a package directory in order — so generated files are
+  // reached first and the shared file budget is spent before a contract is read.
+  // Measured on a real dsh 0.2.0-rc.2 checkout: 76 slots pristine, 56 once built.
+  // Shrinking the set that way is not a smaller answer, it is a wrong one: a slot
+  // that is still defined upstream starts being reported as absent. Contracts are
+  // authored in source, so the official scan must never read build output.
+  const { environment } = auditFixture({
+    dshRoot: 'source',
+    sourceFiles: {
+      ...SLOT_SOURCE,
+      'packages/client/ui-slots/lib/slots.js':
+        "export const slots = { 'generated.only.slot': { kind: 'list' } }\n",
+    },
+  })
+  console.log('# official slot extraction reads source, not build output')
+  console.log(`  slots : ${[...environment.officialSlots].join(', ')}`)
+  console.log()
+  check('a slot declared in source is extracted with build output beside it',
+    environment.officialSlots.has('settings.plugin.item'),
+    [...environment.officialSlots].join(', '))
+  check('a slot that exists only in build output is never extracted',
+    !environment.officialSlots.has('generated.only.slot'),
+    [...environment.officialSlots].join(', '))
 }
 
 // ---------------------------------------------------------------------------
@@ -411,6 +447,199 @@ function bundlePlugin(overrides = {}, files = {}) {
   check('a plugin without dsh.bundle is not blamed for a missing layer',
     plugin.blockers.length === 0 && plugin.risks.length === 0,
     [...plugin.blockers, ...plugin.risks].join('; '))
+}
+
+// ---------------------------------------------------------------------------
+// The profile manifest is re-read on every call
+//
+// `dsh plugin add` and `remove` rewrite it while dsh is running. A process-level
+// cache made the audit report a package that had just been added as "not in
+// dsh.profile.bundles" — the exact check the documented workflow depends on —
+// and a package that had just been removed as still listed.
+// ---------------------------------------------------------------------------
+{
+  const fixture = buildFixture({ plugins: [bundlePlugin()], bundles: [] })
+  cleanups.push(fixture.cleanup)
+  const options = { dshHome: fixture.dshHome, dshRoot: fixture.dshRoot, profileName: 'web' }
+  const first = audit({ environment: resolveEnvironment(options) })
+  const beforeChange = first.plugins[0].bundle.active
+
+  // Same cache key, rewritten manifest: this is what `dsh plugin add` does.
+  writeFileSync(join(fixture.profileDir, 'package.json'), `${JSON.stringify({
+    name: 'dsh-profile-web',
+    private: true,
+    dependencies: { [PLUGIN]: '1.0.0' },
+    dsh: { profile: { bundles: [PLUGIN], patchReload: 'live' } },
+  }, null, 2)}\n`)
+  const second = audit({ environment: resolveEnvironment(options) })
+
+  console.log('# profile manifest re-read between calls')
+  console.log(`  layer active before : ${beforeChange}`)
+  console.log(`  layer active after  : ${second.plugins[0].bundle.active}`)
+  console.log()
+  check('a layer missing from dsh.profile.bundles is reported inactive', beforeChange === false)
+  check('rewriting dsh.profile.bundles is picked up without a restart',
+    second.plugins[0].bundle.active === true, JSON.stringify(second.plugins[0].bundle))
+  check('the re-read profile reports no composition issues', second.profileIssues.length === 0,
+    JSON.stringify(second.profileIssues))
+}
+
+// ---------------------------------------------------------------------------
+// A targeted audit still judges the whole profile's composition
+//
+// Passing only the target into the integrity check made every other bundle entry
+// look uninstalled, and each one produced a "the profile does not boot" blocker.
+// ---------------------------------------------------------------------------
+{
+  const other = 'another-plugin'
+  const second = { ...bundlePlugin(), name: other, manifest: {
+    name: other, version: '1.0.0', dsh: { bundle: { patch: './cordis.patch.yml' } },
+  } }
+  const fixture = buildFixture({ plugins: [bundlePlugin(), second], bundles: [PLUGIN, other] })
+  cleanups.push(fixture.cleanup)
+  const environment = resolveEnvironment({
+    dshHome: fixture.dshHome, dshRoot: fixture.dshRoot, profileName: 'web',
+  })
+  const targeted = audit({ environment, target: PLUGIN })
+  const full = audit({ environment })
+  console.log('# targeted audit of a multi-bundle profile')
+  console.log(`  target plugins      : ${targeted.plugins.length}`)
+  console.log(`  profile issues      : ${JSON.stringify(targeted.profileIssues)}`)
+  console.log()
+  check('a targeted audit judges exactly one plugin', targeted.plugins.length === 1)
+  check('a targeted audit does not blame the other bundles',
+    targeted.profileIssues.length === 0, JSON.stringify(targeted.profileIssues))
+  check('the full audit of the same profile is also clean', full.profileIssues.length === 0,
+    JSON.stringify(full.profileIssues))
+}
+
+// ---------------------------------------------------------------------------
+// dsh's own version gate
+//
+// Reproduces `evaluatePluginCompatibility`: only @deepseek-ai/dsh* peers count,
+// they are compared against the running dsh version with includePrerelease, and
+// the row is disabled unless compatibility.json grants that exact pair.
+// ---------------------------------------------------------------------------
+{
+  const DSH = '0.2.0-rc.2'
+  const gated = {
+    name: PLUGIN,
+    version: '1.0.0',
+    peerDependencies: { '@deepseek-ai/dsh-client-ui-theme': '^0.1.0-rc.6' },
+    dsh: { bundle: { patch: './cordis.patch.yml' } },
+  }
+  const { result } = auditFixture({
+    plugins: [bundlePlugin(gated)], bundles: [PLUGIN], dshVersion: DSH,
+  })
+  const plugin = result.plugins[0]
+  console.log('# version gate: a @deepseek-ai/dsh* range that does not admit this dsh')
+  console.log(`  gate    : ${JSON.stringify(plugin.gate)}`)
+  console.log(`  risk    : ${plugin.risks.find(risk => risk.includes('version gate'))}`)
+  console.log()
+  check('the gate is evaluated for a @deepseek-ai/dsh* peer', plugin.gate.applicable === true,
+    JSON.stringify(plugin.gate))
+  check('a range that does not admit this dsh is a gate denial',
+    plugin.gate.denied === true && plugin.gate.peers.length === 1, JSON.stringify(plugin.gate))
+  check('a denied gate is reported as a risk naming the exemption command',
+    plugin.risks.some(risk => risk.includes('version gate') && risk.includes('allow-version')),
+    plugin.risks.join('; '))
+  check('the gate denial does not claim the profile fails to boot',
+    plugin.blockers.every(blocker => !blocker.includes('version gate')), plugin.blockers.join('; '))
+
+  // The same plugin, granted: the gate admits it and the finding disappears.
+  const exemptFixture = auditFixture({
+    plugins: [bundlePlugin(gated)],
+    bundles: [PLUGIN],
+    dshVersion: DSH,
+    compatibility: { [`${PLUGIN}@1.0.0`]: [DSH] },
+  })
+  const exemptPlugin = exemptFixture.result.plugins[0]
+  check('an exact-version exemption in compatibility.json clears the denial',
+    exemptPlugin.gate.denied === false && exemptPlugin.gate.exempted === true,
+    JSON.stringify(exemptPlugin.gate))
+  check('an exempted plugin carries no gate risk',
+    exemptPlugin.risks.every(risk => !risk.includes('version gate')), exemptPlugin.risks.join('; '))
+
+  // A peer that is not in dsh's namespace can never be refused by the gate. This
+  // is why a plugin whose only peer is cordis installs on any newer build.
+  const cordisOnly = auditFixture({
+    plugins: [bundlePlugin({ peerDependencies: { '@deepseek-ai/cordis': '^0.1.0-rc.5' } })],
+    bundles: [PLUGIN],
+    dshVersion: DSH,
+  })
+  check('a non-dsh peer is outside the gate entirely',
+    cordisOnly.result.plugins[0].gate.applicable === false,
+    JSON.stringify(cordisOnly.result.plugins[0].gate))
+
+  // includePrerelease: the gate admits a prerelease that the peer check refuses.
+  const openRange = auditFixture({
+    plugins: [bundlePlugin({ peerDependencies: { '@deepseek-ai/dsh-llm': '>=0.1.0' } })],
+    bundles: [PLUGIN],
+    dshVersion: DSH,
+  })
+  const openPlugin = openRange.result.plugins[0]
+  check('the gate runs in includePrerelease mode',
+    openPlugin.gate.applicable === true && openPlugin.gate.peers.length === 0,
+    JSON.stringify(openPlugin.gate))
+}
+
+// ---------------------------------------------------------------------------
+// The peer rollup makes silence unambiguous
+// ---------------------------------------------------------------------------
+{
+  const noPeers = auditFixture({ plugins: [bundlePlugin()], bundles: [PLUGIN] })
+  const withPeers = auditFixture({
+    plugins: [bundlePlugin({ peerDependencies: { '@deepseek-ai/cordis': '^4.0.1', react: '^18.2.0' } })],
+    bundles: [PLUGIN],
+  })
+  const empty = noPeers.result.plugins[0].peerSummary
+  const full = withPeers.result.plugins[0].peerSummary
+  console.log('# peer rollup')
+  console.log(`  no peers   : ${JSON.stringify(empty)}`)
+  console.log(`  two peers  : ${JSON.stringify(full)}`)
+  console.log()
+  check('a plugin with no peers reports zero declared', empty.declared === 0, JSON.stringify(empty))
+  check('declared peers are counted even when nothing fails',
+    full.declared === 2, JSON.stringify(full))
+  check('unsatisfiable peers are counted, never dropped',
+    full.satisfied + full.unsatisfied + full.undecidable === full.declared, JSON.stringify(full))
+}
+
+// ---------------------------------------------------------------------------
+// Client-side injects: declared by the browser half, unresolvable from the host
+// ---------------------------------------------------------------------------
+{
+  const clientPlugin = {
+    name: PLUGIN,
+    version: '1.0.0',
+    dsh: {
+      bundle: { patch: './cordis.patch.yml' },
+      client: { platform: 'web', inject: ['@deepseek-ai/dsh-client-ui-theme'] },
+    },
+  }
+  const { result } = auditFixture({
+    plugins: [bundlePlugin(clientPlugin, {
+      // Both spellings the scanner recognises, in the paths a real plugin uses:
+      // the source `export const inject` and the built `exports.inject`.
+      'src/client/index.ts': "export const inject = ['slots', 'theme']\n",
+      'client/client.js': "const inject = ['slots', 'theme']\nexports.inject = inject\n",
+      'lib/index.js': "export const inject = ['webServer']\n",
+    })],
+    bundles: [PLUGIN],
+  })
+  const plugin = result.plugins[0]
+  console.log('# client-side injects')
+  console.log(`  client services : ${plugin.clientServices.join(', ')}`)
+  console.log(`  unknowns        : ${plugin.unknowns.join(' | ') || '(none)'}`)
+  console.log()
+  check('a token declared only by the browser half is classified as client-side',
+    plugin.clientServices.includes('slots') && plugin.clientServices.includes('theme'),
+    plugin.clientServices.join(', '))
+  check('a client-side token is never reported as missing from the host context',
+    plugin.unknowns.every(unknown => !unknown.includes('"slots"') && !unknown.includes('"theme"')),
+    plugin.unknowns.join('; '))
+  check('a host-declared token is still probed', !plugin.clientServices.includes('webServer'),
+    plugin.clientServices.join(', '))
 }
 
 for (const cleanup of cleanups) cleanup()

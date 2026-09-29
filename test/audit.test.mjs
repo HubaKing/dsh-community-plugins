@@ -188,8 +188,21 @@ check('a missing source checkout is detected', packedEnv.sourceTreeAvailable ===
 check('absence is never stated as fact without a source checkout',
   packedResult.plugins.every(plugin => !plugin.blockers.some(blocker => blocker.includes('absent from the package set'))),
   packedResult.plugins.flatMap(plugin => plugin.blockers).join('; '))
-check('the fallback still resolves official package versions without a source checkout',
-  packedEnv.officialPackages.size > 0 || environment.officialPackages.size === 0)
+// The fallback only exists on a machine that has one: `profiles/node_modules` is
+// healed by dsh at startup, and a profile that resolves everything from its own
+// modules (or from the source checkout) never grows it. Asserting it
+// unconditionally failed on exactly such a machine while the code was correct.
+const fallbackScope = join(
+  environment.dshHome ?? join(environment.fallbackModulesDir ?? '', '..', '..'),
+  'profiles', 'node_modules', '@deepseek-ai',
+)
+if (existsSync(fallbackScope)) {
+  check('the fallback resolves official package versions without a source checkout',
+    packedEnv.officialPackages.size > 0,
+    `${fallbackScope} exists but contributed no packages`)
+} else {
+  console.log(`  (no fallback scope at ${fallbackScope} on this machine — assertion skipped)\n`)
+}
 
 // ---------------------------------------------------------------------------
 // Surface self-consistency: the check that proves the symbol analysis cannot
