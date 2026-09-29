@@ -203,7 +203,12 @@ dsh plugin --profile web add link:${DSH_HOME:-~/.dsh}/plugins/dsh-community-plug
 
 安装后**重启 dsh**（bundle 层在启动时组合）。新会话中 `<available_skills>` 出现 `dsh-community-plugins`、工具列表出现 `dsh_plugin_audit` 与 `dsh_plugin_inspect`，即安装成功。
 
-> `dsh` 不在 PATH 时，使用 `node <dsh 安装根>/apps/cli/lib/bin.js plugin --profile web add <spec>`。
+> `dsh` 不在 PATH 时，形态有两种，不要只记一条路径：
+>
+> - **打包安装** —— CLI 在 asar 里，由应用管理的 shim 启动：`& "<安装根>\resources\runtime\cli\bin\dsh.cmd" plugin --profile web add <spec>`。注意 `<安装根>\resources\app.asar.unpacked\dsh` 里只有 `node_modules`，那里没有 `apps/cli/lib/bin.js`。
+> - **源码 checkout** —— `node <checkout>/apps/cli/lib/bin.js plugin --profile web add <spec>`。
+>
+> 安装根的定位顺序：`$DSH_ROOT` → 从当前进程入口逐级向上找含 `packages/` + `apps/cli/` 的目录 → `~/work/deepseek-harness`、`~/deepseek-harness`、`~/dsh`。**只有源码 checkout 能当审计工具的安装根**；纯打包安装会把 API 面检查降级为 `unknown`，并在 `limits of this run:` 里说明。
 
 ## 工作原理
 

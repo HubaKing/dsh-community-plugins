@@ -203,7 +203,12 @@ dsh plugin --profile web add link:${DSH_HOME:-~/.dsh}/plugins/dsh-community-plug
 
 **Restart dsh after installing** (bundle layers are composed at startup). Installation succeeded when `dsh-community-plugins` appears in `<available_skills>` and both `dsh_plugin_audit` and `dsh_plugin_inspect` appear in the tool list.
 
-> When `dsh` is not on PATH, use `node <dsh install root>/apps/cli/lib/bin.js plugin --profile web add <spec>`.
+> When `dsh` is not on PATH, there are two shapes rather than one path to memorise:
+>
+> - **Packaged install** — the CLI lives inside the asar and is launched by the shim the app manages: `& "<install root>\resources\runtime\cli\bin\dsh.cmd" plugin --profile web add <spec>`. Note `<install root>\resources\app.asar.unpacked\dsh` contains only `node_modules`, so `apps/cli/lib/bin.js` does not exist there.
+> - **Source checkout** — `node <checkout>/apps/cli/lib/bin.js plugin --profile web add <spec>`.
+>
+> Location order for the install root: `$DSH_ROOT` → walk up from the running process entry to a directory holding `packages/` and `apps/cli/` → `~/work/deepseek-harness`, `~/deepseek-harness`, `~/dsh`. Only a source checkout can serve as the install root for the audit's API-surface checks; a pure packaged install degrades those to `unknown` and says so under `limits of this run:`.
 
 ## How it works
 

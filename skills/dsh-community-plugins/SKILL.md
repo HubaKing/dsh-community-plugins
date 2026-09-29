@@ -132,6 +132,17 @@ dsh_plugin_inspect({ spec: ['pkg-a', 'pkg-b', 'pkg-c'] })    # 预筛多个候�
 4. **web_search**：搜 `dsh-plugin` 话题与 npm 的 `dsh-*` 包（通用兜底）。
 5. **npm**：`npm view <包名>` 查版本、许可证、依赖。`<包名>` 必须是 `package.json` 的 `name`，不是仓库名（见下节）。
 
+> 🔑 **要的是"包名"时，别从 GitHub 反查，直接搜 registry。** 按关键词搜 npm 一次就能拿到 **包名** + 描述 + 版本 + 发布日，而「GitHub 仓库 → 读 `package.json` → 得到包名」每个候选要 2 次 API 调用，且**未认证时会被限流**（实测 8 个候选之后开始 403）；registry 这类检索没有对应的限流。实测顺序应该是：**先 `npm search` 拿包名与候选池 → 再用 GitHub topic 补 stars / 维护活跃度 / 许可证全文**。
+>
+> ```bash
+> # 一次拿到最多 100 条：包名、版本、描述、发布日；然后按 §3 的方法筛
+> curl -s "https://registry.npmjs.org/-/v1/search?size=100&text=dsh%20glass" | head -c 400
+> # 在 Node 里更好用：GET https://registry.npmjs.org/-/v1/search?text=<关键词>&size=100
+> #   条目结构：objects[].package = { name, version, description, date, keywords, links }
+> # 用描述里的类别词（glass / 玻璃 / 磨砂 / 主题 / 皮肤 / memory / mcp …）收窄
+> ```
+> 一个实测例子：本会话要筛「液态玻璃」皮肤，62 个玻璃类 dsh 包只靠几个关键词的 registry 检索就全拿到了，而同样的池子靠 GitHub 反查需要上百次 API 调用。
+
 ### ⚠️ 仓库名 ≠ npm 包名
 
 `dsh plugin add` 用 `package.json` 的 `name`，不是 GitHub 仓库名。二者常完全不同，按仓库名查 npm 会得到假 404，误判为「未发布」。
@@ -401,15 +412,35 @@ dsh plugin --profile web add <spec>
 # spec 可以是：npm 包名 | github:owner/repo | 本地路径/链接 | tarball
 ```
 
-> **`dsh` 不在 PATH 时**（`Get-Command dsh` / `which dsh` 为空，实测常见）：直接用 node 调安装根的 CLI 入口，功能完全一致：
-> ```bash
-> node "<dsh 根>/apps/cli/lib/bin.js" plugin --profile web add <spec>
-> ```
+> **`dsh` 不在 PATH 时**（`Get-Command dsh` / `which dsh` 为空，实测常见）：**不要照抄某一条路径就试**，按下面的顺序定位，两种情况形态不同。
+
+**① 打包安装（Windows 上是 `…\Programs\DeepSeek Harness`）** —— CLI 在 asar 里，靠应用自带的 shim 启动：
+
+```powershell
+# 应用会把这一目录加进用户 PATH（由 resources\runtime\cli\command-manager.js 管理）；
+# 若 dsh 仍不在 PATH（本机实测就是这样），直接用绝对路径调同一个 shim：
+& "<安装根>\resources\runtime\cli\bin\dsh.cmd" plugin --profile web add <spec>
+```
+
+shim 内部等价于 `ELECTRON_RUN_AS_NODE=1 "<安装根>\DeepSeek Harness.exe" --expose-internals "<安装根>\resources\app.asar\dsh\node_modules\@deepseek-ai\dsh-desktop-host\lib\cli.js" %*` —— 所以 **`<安装根>\resources\app.asar.unpacked\dsh` 里只有 `node_modules`，不是安装根**，在那里找 `apps/cli/lib/bin.js` 必然找不到（本机实测踩过）。
+
+**② 源码 checkout** —— CLI 是普通 node 入口，功能与上面的 shim 完全一致：
+
+```bash
+node "<checkout>/apps/cli/lib/bin.js" plugin --profile web add <spec>
+```
+
+**怎么找到安装根**（`dsh_plugin_audit` 用的是同一套顺序，见 `lib/audit.js` 的 `detectDshRoot`）：`$DSH_ROOT` → 从**当前进程的入口路径**逐级向上找到含 `packages/` + `apps/cli/` 的目录 → 常见位置 `~/work/deepseek-harness`、`~/deepseek-harness`、`~/dsh`。
+
+⚠️ 两点实测结论：
+- **只有源码 checkout 才能当"安装根"给审计工具用**。纯打包安装上没有 `packages/`，`dsh_plugin_audit` 会报 `dsh install root not found` 并把 API 面检查降级为 `unknown`（它会在 `limits of this run:` 里如实说明），此时官方包集合只剩 `profiles/node_modules`，比源码树少（尤其缺 client 侧包）——**别把那种降级当成"插件不兼容"**。
+- 本机是 checkout（`C:\Users\HubaKing\work\deepseek-harness`）+ 打包应用共存的形态：**CLI 用 ① 或 ② 都行，而审计工具需要 ② 的那个 checkout**。
 
 **装完先验证再重启**（重启前就能确认装对没有，避免重启后才发现问题）：
 
 ```bash
-node "<dsh 根>/apps/cli/lib/bin.js" plugin --profile web list   # 应列出该包
+node "<checkout>/apps/cli/lib/bin.js" plugin --profile web list   # 应列出该包
+# 打包安装则用：& "<安装根>\resources\runtime\cli\bin\dsh.cmd" plugin --profile web list
 ```
 
 再读 profile 的 `package.json`，确认包名已进入 `dsh.profile.bundles` 数组（bundle 插件）或 `cordis.patch.yml` 出现挂载行（纯 cordis 插件）。
@@ -457,6 +488,38 @@ node "<dsh 根>/apps/cli/lib/bin.js" plugin --profile web list   # 应列出该�
 6. skill 出现在 `<available_skills>`；工具出现在工具列表；UI 出现在设置面板
 7. 若更新无效果：按 §4 供应链策略排查 minimumReleaseAge
 8. **装完告知用户回滚路径**：安装前备份 profile 的 `package.json` / `pnpm-lock.yaml` / `cordis.patch.yml`，或直接 `dsh plugin --profile web remove <包名>`。UI 类插件出问题会导致界面异常，用户需要知道怎么退回去
+
+### 命令本身失败时（实测排障）
+
+**① `dsh plugin add` 被拒** —— `installation rejected: Plugin <包>@<版本> is incompatible with dsh <版本>: peerDependencies {…}`：
+
+这不是 bug，是本机版本门禁（§3）。它**什么都没装、profile 一个字节没改**（原子失败），别以为装了一半。两条出路：换一个声明了本机版本的包/版本，或按 §3 授权精确版本豁免后再装。
+
+**② `dsh plugin remove` 报错、且什么都没删** —— 典型输出：
+
+```
+[ERR_PNPM_UNUSED_PATCH] The following patches were not used: <包>@<版本>
+Either remove them from "patchedDependencies" or update them to match packages in your dependencies.
+dsh: plugin command failed; diagnostics: …\.plugin-manager\logs\operation-XXXX\pnpm.log
+```
+
+成因：profile 的 `pnpm-workspace.yaml` 里还留着**该包的 `patchedDependencies` 条目**（值是相对 profile 的补丁路径，如 `patches/<包>@<版本>.patch`）。一旦该包不再是依赖，pnpm 就认为这条补丁"未被使用"而报错，整条 remove 原子回滚——**包、`node_modules`、`dsh.profile.bundles` 全都原封不动**（实测如此，所以看到报错别以为删掉了一半）。
+
+处置（实测有效）：备份 `pnpm-workspace.yaml` → 删掉 `patchedDependencies` 那一整块（补丁文件可一并移到备份目录）→ 重跑 `remove`：
+
+```yaml
+# ${DSH_HOME:-~/.dsh}/profiles/<name>/pnpm-workspace.yaml 实测形态
+packages:
+  - .
+nodeLinker: hoisted
+autoInstallPeers: false
+patchedDependencies:            # ← 卸载时若残留条目就会卡住 remove，整块删掉再重跑
+  <包>@<版本>: patches/<包>@<版本>.patch
+```
+
+事后确认三处都干净：`dsh plugin --profile web list` 不再列出、`dsh.profile.bundles` 不再含它、`node_modules/<包>` 目录已消失。
+
+**③ 改完 profile 却"没生效"** —— 先分清改的是哪个文件：`dsh.profile.bundles`（层是否组合，`add`/`remove` 自动维护）、`cordis.patch.yml`（纯 cordis 插件的挂载行，配置层 HMR 生效）、`compatibility.json`（版本门禁的精确授权）。只有 bundle 层的增删需要重启 dsh。
 
 ## 6. 约束与边界
 
