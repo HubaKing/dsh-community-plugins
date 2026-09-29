@@ -4,21 +4,17 @@
 
 ### 本版要点
 
-- **新增预筛模式 `dsh_plugin_inspect({ spec: [...] })`**：一次给多个候选包，**一个字节的包内容都不下载**——只读 registry 文档，判定声明的 peer 区间、dsh 的版本门禁与 manifest 里的 lifecycle 脚本，并在 `limits` 里写明看不到什么。判定与措辞与 `dsh_plugin_audit` 同源（同一批函数），两处不会说法不一。
+- **补齐三项只有实测才能得到的排障与定位**（全部来自一次真实安装的踩坑记录）：
 
-- **判定 dsh 自带的版本门禁**：`0.2.0-rc.2` 起 `dsh plugin add` 会拒绝 peer 不匹配的包，启动时也会**只禁用那一行**（profile 仍照常启动）。工具现在逐条复刻 `evaluatePluginCompatibility` 的判据（只管 `@deepseek-ai/dsh*`、跟运行中的 dsh 版本比、`includePrerelease` 语义、`compatibility.json` 里的精确版本豁免），输出 `gate:` 行并给出可直接粘贴的 `allow-version` 命令。
+  - **安装根与 CLI 的定位**。此前文档只给了一条 `node <dsh 根>/apps/cli/lib/bin.js`，而**打包安装上那个路径并不存在**（`resources/app.asar.unpacked/dsh` 里只有 `node_modules`）。现在写清两种形态：打包安装用应用自带的 `resources/runtime/cli/bin/dsh.cmd`（内部是 `ELECTRON_RUN_AS_NODE=1` + asar 里的 `@deepseek-ai/dsh-desktop-host/lib/cli.js`，其所在目录在部分机器上并不在 PATH），源码 checkout 用 `apps/cli/lib/bin.js`；并给出安装根的搜索顺序，以及「只有源码 checkout 能当审计工具的安装根、纯打包安装会把 API 面检查降级为 `unknown`」这一结论。
 
-- **修复：profile 组成每次调用重读**。此前按进程缓存 `dsh.profile.bundles`，导致刚 `dsh plugin add` 成功的包被报成 `NOT in dsh.profile.bundles` —— 而这正是安装流程依赖的那一步。
+  - **要包名就搜 registry，别从 GitHub 反查**。GitHub 未认证搜索实测 8 个候选后开始 403，而 registry 的 `/-/v1/search` 一次返回 100 条包名+描述+版本+发布日。推荐顺序：先 registry 拿包名与候选池，再用 GitHub topic 补 stars / 活跃度 / 许可证全文。
 
-- **修复：带 target 的审计不再误报**。此前只把目标包当作已装集合，其余 bundle 会被报成「the profile does not boot」；现在始终以完整已装集合判定 profile 组成。
+  - **`dsh plugin remove` 报错却什么都没删**。profile 的 `pnpm-workspace.yaml` 里残留的 `patchedDependencies` 条目会让 pnpm 报 `ERR_PNPM_UNUSED_PATCH` 并**整体回滚**（包、`node_modules`、`dsh.profile.bundles` 原封不动）。文档给出成因、处置步骤与事后该确认的三处；同时写明 `add` 被版本门禁拒绝也是原子失败，什么都没装。
 
-- **`peers:` 汇总行与 client 侧 inject**：满足的 peer 不再沉默（「没有发现」与「没有声明」是两件事）；由浏览器半声明的 `slots` / `theme` / `locale` 单独列出，不再因此压低 verdict。
+- **发布说明改为仓库内文件**（`.github/release-notes.md`）。此前的说明内嵌在 workflow 里、经 runner 环境变量传递，实测在 v0.5.0 的 Release 正文里产生了 2 个 U+FFFD 替换字符（而本地文件与 GitHub 上的副本都是干净的）。现在用 `sed` 替换版本号后 `gh release create --notes-file` 读取文件，这类重编码不会再有，说明本身也可评审、可 diff。v0.5.0 的正文已一并订正。
 
-- **测试新增 `screen` 套件**，并为版本门禁、profile 重读、target 审计各补了回归测试。
-
-- 判定分级不变：`incompatible` / `at-risk` / `unknown` / `compatible`。
-
-- `inject` 仍为 `['skills']`；没有 `tools` 服务的部署上两个工具静默降级，skill 始终可用，且一个工具注册失败不会带走另一个。
+- 注：**判定口径与工具行为在本版没有变化**。上一版（v0.5.0）新增的预筛模式 `dsh_plugin_inspect({ spec: [...] })`（只读 registry 文档、不下载包内容）与 `gate:` 版本门禁判定仍然照旧，细节见 v0.5.0 的发布说明。
 
 ### 安装
 
@@ -38,7 +34,7 @@ dsh plugin --profile web add link:"${DSH_HOME:-~/.dsh}/plugins/dsh-community-plu
 dsh plugin --profile web add @hubaking/dsh-community-plugins
 ```
 
-> `dsh` 不在 PATH 时：`node <dsh 安装根>/apps/cli/lib/bin.js plugin --profile web add <spec>`
+> `dsh` 不在 PATH 时，形态有两种：打包安装用 `& "<安装根>\resources\runtime\cli\bin\dsh.cmd"`，源码 checkout 用 `node <checkout>/apps/cli/lib/bin.js`。完整定位方法见 skill 的 §4。
 
 > **npm 形态必须带 `@hubaking/` scope**：无 scope 的同名包属于另一个项目（funcodingdev），`add dsh-community-plugins` 会装错。
 
