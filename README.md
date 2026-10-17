@@ -100,6 +100,14 @@ Verdicts are graded, not binary:
 | `incompatible` | hard evidence: a package, export or slot it needs is gone from this build, or its bundle layer cannot be mounted |
 | `unknown` | something needed a check that cannot be done offline; the reason is always stated |
 
+### The output contract, and why it is enforced in code
+
+A tool's return value must be **lossless JSON**: every reachable value has to survive `JSON.parse(JSON.stringify(x))` unchanged. One `undefined`-valued property violates that, and the host's response is to discard the *entire* result — the tool ran, downloaded, unpacked, judged, and delivered nothing.
+
+That happened twice, from the same class of defect in two places: the github resolver had no `latestVersion`/`ageMinutes`/`skippedByAge`, which were merged onto the report unconditionally; and the live service probe could answer `undefined`, which was stored straight onto `runtimeServices[].present`. Registry specs were unaffected in the first case, so the failure only appeared on the path that needed a GitHub release.
+
+Both are fixed at the source, and the contract is now enforced rather than trusted: `lib/serialize.js` sanitizes every report on its way out of **both** tools, and a repaired report says so at the bottom instead of being silently corrected. `isLosslessJSON()` ships in the same module — it is the check that would have caught the first occurrence, so it belongs in the code and not only in a test.
+
 ### Symbol-level checking, and why "the package still exists" is not enough
 
 A plugin that does `import { PiAiAdapter } from '@deepseek-ai/dsh-llm'` keeps working only while that package still *exports* `PiAiAdapter`. A rename or a split leaves the package in place and the binding gone — and an ESM named import of a binding the module does not provide is a **link-time throw**, not a degraded feature.
@@ -160,6 +168,10 @@ dsh_plugin_inspect({ spec: ['pkg-a', 'pkg-b', 'pkg-c'] })    # screen many candi
 ```
 
 `spec` as an **array** is the screening mode, and it downloads **no package bytes at all**: it reads the registry documents only, judges the declared peer ranges, dsh's version gate and the manifest's lifecycle scripts, and states what it could not see. It exists because "which of these forty candidates can I actually install here?" used to cost forty downloads. Use a single `spec` string on the survivors for the full audit.
+
+A screened row is labelled **`METADATA-OK`**, never `COMPATIBLE`, and every row carries `· package contents not audited`. The two verdict vocabularies are kept apart on purpose: `COMPATIBLE` is the full audit's strongest word, and lending it to a mode that never opens the package invited exactly the wrong reading — fourteen `COMPATIBLE` rows once meant "all fourteen are safe to install", while one of them shipped an `install.cmd` that bypasses `dsh plugin` entirely.
+
+**Name collisions are reported separately from the verdict.** This ecosystem republishes one idea under several scopes, so both modes look for siblings and name them (`! this name has N other publisher(s)`). It answers "is this the package I meant?", which no manifest analysis can answer: `dsh-reasoning-effort` has five publishers, the bare name is `AT-RISK`, and the package most people want was never published to npm at all. The check never changes a verdict, reads registry metadata only, and a registry that will not answer makes it report nothing rather than fail the audit.
 
 **This is the only part of the plugin that uses the network, and it says so in its own name, its description, and its output.** What it does:
 

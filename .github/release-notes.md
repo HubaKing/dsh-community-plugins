@@ -1,25 +1,42 @@
 ## dsh-community-plugins __VERSION__
 
-为 DeepSeek Harness 提供社区插件生态指南的 bundle 插件：注册 `dsh-community-plugins` skill，并注册两个工具，把插件与本机 dsh 构建逐条比对。纯 JavaScript、单一依赖、无构建步骤、无 UI。本版为**全面适配 DSH 桌面版**的文档与判定修订版。
+为 DeepSeek Harness 提供社区插件生态指南的 bundle 插件：注册 `dsh-community-plugins` skill，并注册两个工具，把插件与本机 dsh 构建逐条比对。纯 JavaScript、单一依赖、无构建步骤、无 UI。本版为**输出契约与判定口径的缺陷修复版**。
+
+> 本版修的是「工具跑完了、结论也算出来了，却被宿主整份丢弃」这一类问题，以及一个把正常插件误判成不可用的系统性偏差。所有条目均有复现命令与实测记录。
 
 ### 本版要点
 
-- **新增「已安装」与「已生效」的判定**（`dsh_plugin_audit`）。bundle 层仅在进程启动时组合一次，因此「安装成功」与「运行进程已加载」是两个独立事实；此前工具只能报告前者，而生态中最常见的误判正是把二者混为一谈。现在审计会把**调用进程的启动时刻**与 profile 配置文件（`package.json`、`cordis.yml`）及各插件目录的 mtime 比较：晚于该时刻写入的 bundle 层不在运行进程中，报告头部给出激活提示，对应插件行下给出 `activation:` 说明。该判定为提示项，不改变兼容性结论；调用方未提供启动时刻时结果保持 `null`，不作推测。
-  - 实测依据（2026-09-30，Windows，dsh `0.2.0-rc.2`，profile `desktop`）：桌面宿主进程启动于 03:31:42，`dsh-theme-kit` 于 03:34:38 写入 profile；对运行中的 HTTP 服务探测 `/dsh-theme-kit-wallpapers/...` 返回 404（未知路由），而 `/`、`/index.html`、`/api/health` 返回 401（路由存在、需鉴权），据此判定该插件的宿主半区未挂载。
+- **修复 `dsh_plugin_inspect` 对 github / tarball 路径返回 `invalid output: value is not lossless JSON`**（阻断级）。`inspect.js` 曾用 `Object.assign` 无条件合并 `latestVersion` / `ageMinutes` / `skippedByAge` 三个字段，而 `resolveGithub()` 根本不产生它们，于是 `report.source` 上出现值为 `undefined` 的自有属性。宿主要求返回值为 lossless JSON，一个 `undefined` 就足以让**整份已经算完的报告被丢弃**——下载、校验、解包、判定全部白做。npm 路径不受影响，所以该缺陷只在真正需要 github 路径时暴露：实测一次会话中连续失败 3 次，而同一工具的 npm 调用全部正常。
+  - 修复分两层：根因上两个 resolver 改为**同构返回**（缺省键显式写 `null`，并新增 `requestedRef`）；兜底上新增 `lib/serialize.js`，由 `finalizeReport()` 对报告做递归净化。被净化过的报告会在正文末尾**如实说明改动了几项**，不做静默修正。
 
-- **lifecycle 脚本按安装来源分级**。`preinstall` / `install` / `postinstall` 在 registry 安装时执行，`prepare` / `prepublishOnly` 仅在 git 或本地（`link:`）安装与发布流程中执行。此前四者一律按安装期高危项报告，属于误报：实测中三个包声明了 `prepare` 而 `dsh plugin add` 未执行任何 lifecycle 脚本。现在前者报 `high`，后者报 `info` 并注明适用来源。
+- **修复 `dsh_plugin_audit` 自身的同类缺陷**（实施中发现）。`runtimeServices[].present` 只判断了 `=== null`，而 live service probe 在「服务不存在」时返回 `undefined`，该值被直接存入 payload，同样使整份审计报告被丢弃。现在 `present` 收紧为严格布尔（`probed === true`），`undefined` 与 `null` 统一归入「离线不可判定」；并把净化兜底**同样加到审计工具的返回路径**——契约由代码强制，不依赖每个调用点自律。
 
-- **文档新增「适配范围」与「生效时机」两节**：明确本插件全面适配 DSH 桌面版，安装与判定默认跟随正在运行的 profile（`desktop` 与 `web` 属并列 profile，`bundles` / 依赖 / `compatibility.json` 互相独立）；并给出「是否登记 / 是否被组合 / 是否加载」三处独立状态的判据，说明只有活体图层能证明插件已生效。中英文 README 同步。
+- **`github:` ref 的 `v` 前缀归一化**。`#v0.8.1` 曾被原样当作版本号（`v0.8.1`），与已安装的 `0.8.1` 无法比较，导致装完之后再审计会误报「版本不同」。现在只剥离语义版本形状的前导 `v`，分支名（`main`）、短标签（`v2`）、commit sha 一律不动，同时保留 `requestedRef` 显示实际 pin 的 ref。
 
-- **SKILL.md 全文改为标准书面语**，同时纳入本轮实测得到的新结论：
-  - 版本门禁的精确版本豁免流程（`allow-version` / `revoke-version`，写入 `compatibility.json`，粒度为「包版本 × dsh 版本」），以及审计报告 `gate:` 行的豁免显示形态；
-  - **包自述文档可能与 manifest 冲突，一律以 manifest 的 peer 区间与门禁实际比对结果为准**（实测：某仓库 INSTALL 声明支持 0.1.7 与 0.2，而包内 peer 上界 `<0.1.8-0` 排除 0.2）；
-  - monorepo 的 git 安装形式 `github:<owner>/<repo>#path:/<subdir>`，以及仓库根目录无 `package.json` 时该形式的不可用性；
-  - client-only 包（仅 `dsh.client`、无 `dsh.bundle`）不进入 `dsh.profile.bundles`，需宿主侧接线（皮肤中心一类加载器或 profile 自身 patch 层）；
-  - 皮肤中心路线（`$DSH_HOME/skins/<id>/` 纯资产目录、加入与切换无需重启）与原生皮肤包属两条互不兼容的适配线，不得装入同一 profile；
-  - 管理器型插件首次启动先禁用其管理的全部皮肤时，首次重启后仍为官方默认外观属预期行为。
+- **`react` 等浏览器端 peer 不再把整包降级为 `unknown`**。官方 client 包把 `react` 声明为 `devDependencies` 而非 peer——Web 客户端产物自带 React，因此本机任何 host 侧 `node_modules` 都查不到它，这是**正常形态**。此前工具把它记为 `unknown`，实测一次会话中**12 个正常工作**的 client 插件因此从 `COMPATIBLE` 被降为 `UNKNOWN`。
+  - 修复比「白名单豁免」更进一步：从 `<dshRoot>/apps/web/node_modules/react`（本机实测 `18.3.1`）读取**权威版本**做真比对。
+  - 判据没有放宽：`react: ^17` 在 18.3.1 上仍会被正确判为 **at-risk**。只有在确实读不到时才计入新的 `structural` 桶——单独计数、不影响 verdict，并在 `peers:` 行显示为 `supplied by the Web client (browser-half, not host-resolved)`。
 
-- 注：判定口径中**除上述两项外没有其他变化**。v0.5.1 的安装根与 CLI 定位、`patchedDependencies` 残留导致 `remove` 整体回滚、预筛模式与发布年龄处理等结论仍然照旧。
+- **预筛 verdict 改用 `METADATA-OK`**，并给每一行加上 `· package contents not audited`。此前的 `COMPATIBLE` 与完整审计共用同一个最强词汇：实测一次预筛 14 个包全部显示 `COMPATIBLE`，被读成「14 个都能装」，而其中一个包带着绕过 `dsh plugin` 的 `install.cmd`、另一个必须做完整审计才能看出问题。「没看什么」现在写在每一行上，而不是只躺在报告底部。
+
+- **新增同名包歧义告警**。本生态存在真实的命名撞车：`dsh-reasoning-effort` 一个尾部名称对应 **5 个不同发布者**——裸名那个审计为 `AT-RISK`，而用户真正想要的（★227）**根本没发 npm、只存在于 GitHub Release**。直接 `add dsh-reasoning-effort` 会装到前者，两者表现几乎一样，只在出问题时才暴露。
+  - 新增 `findNameCollisions()`：单包审计与预筛两种模式都会报告 `! this name has N other publisher(s)`。
+  - 该探测**不改变 verdict**（被审计的包按自身证据判定），只回答「你选的是不是这一个」；只读 registry 元数据，失败时静默跳过而**不拖垮整份审计**。
+  - 实测：精确命中 3 个 `dsh-reasoning-effort` scope 变体，且对唯一名（如 `dsh-codex-effort-slider`）不误报；前缀相近的 `dsh-reasoning-effort-plus` 也不会被当成撞名。
+
+- **pin 版本时提示持久化副作用**。`dsh plugin add <pkg>@<version>` 会让 pnpm 把该版本写入 profile 的 `pnpm-workspace.yaml` 的 `minimumReleaseAgeExclude`，该豁免会**存活到安装之后**。现在报告中一并说明如何撤销。
+
+### 文档更新
+
+- **新增「GitHub Release 预构建 tarball」安装路径**。生态中高 star 插件常常只发 Release、不发 npm，此时 `github:` 源码形式需要现场构建 TypeScript，而 Release 附件是构建产物、装完即用。文档给出三者的取舍表、判断依据、完整命令，以及 tarball 直链没有 registry integrity 兜底时应如何比对字节（附可直接粘贴的 PowerShell 片段）。
+- **新增「同名歧义」判据**，含上述 5 个 `dsh-reasoning-effort` 的实例表。
+- **更正两处原结论**：其一，`react` peer 并非「不可判定」，而是版本在 client 构建里；其二，安装根探测**本来就正确选中了源码 checkout**（实测 `sourceTreeAvailable: true`、329 个官方包），原先「打包安装导致降级」的推断不成立。
+
+### 测试
+
+- 测试从 **436 项增至 469 项**，全部通过。
+- 新增 `test/serialize.test.mjs`（输出契约、`v` 前缀、probe 各种返回形态、审计工具入口）与 `test/collisions.test.mjs`（撞名探测与渲染）。
+- 真实包回归：**27 个** npm 包逐个完整审计，**0 个 lossless 失败**；预筛 27/27 无 error（其中 2 个仅因网络抖动超时，重试后正常返回报告——提示：修复后超时也会**返回带错误的报告**，而不是被静默丢弃）。
 
 ### 安装
 
@@ -49,7 +66,7 @@ dsh plugin --profile web add @hubaking/dsh-community-plugins
 
 1. 安装后**完全退出应用并重新启动**（bundle 层在启动时组合一次；改 `index.js` / `lib/` 同样必须重启）
 2. 新开一个会话，`<available_skills>` 出现 `dsh-community-plugins`、工具列表出现 `dsh_plugin_audit` 与 `dsh_plugin_inspect` 即生效
-3. 装某个包**之前**问：「这个包能装吗？」——agent 会调用 `dsh_plugin_inspect`（联网，把 tarball 拉下来审）；候选多时先让它传数组做预筛
+3. 装某个包**之前**问：「这个包能装吗？」——agent 会调用 `dsh_plugin_inspect`（联网，把 tarball 拉下来审）；候选多时先让它传数组做预筛。注意预筛结论是 `METADATA-OK`，**不等于可以装**
 4. 已经装了的，或升级 dsh **之后**问：「我装的插件现在怎么样？」——agent 会调用 `dsh_plugin_audit`（离线）；报告头部的激活提示用于判断是否存在「已安装但未生效」
 
 ### 验证
@@ -58,10 +75,11 @@ dsh plugin --profile web add @hubaking/dsh-community-plugins
 - 会话 skill 目录出现本 skill；工具列表出现两个工具
 - `dsh_plugin_audit({})` 返回本机全部第三方插件的结论；若 profile 在进程启动后被改写，报告头部出现激活提示
 - `dsh_plugin_inspect({ spec: '<某个包>' })` 返回下载、校验与判定结果，且临时目录已清空
+- `dsh_plugin_inspect({ spec: 'github:<owner>/<repo>#v1.2.3' })` **必须返回报告**（本版修复的核心）；报告头 `version` 显示 `1.2.3`，并保留 `requestedRef: v1.2.3`
 - `dsh_plugin_inspect({ spec: ['包 a', '包 b'] })` 返回预筛结果，且全程未下载任何包内容
-- 九个测试套件全部通过（`npm test`，本版共 433 项检查）
+- 十一个测试套件全部通过（`npm test`，本版共 469 项检查）
 
 ### 文档
 
-- README 中英双语（English / 中文），语言切换栏在文档顶部；两版均含「适配范围」与「生效时机」
+- README 中英双语（English / 中文），语言切换栏在文档顶部
 - 官方文档：[打包与安装插件](https://deepseek-harness.github.io/deepseek-harness/develop/publish) · [生命周期](https://deepseek-harness.github.io/deepseek-harness/develop/framework/)
