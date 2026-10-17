@@ -343,7 +343,7 @@ check('the report states what a screen cannot see',
   Array.isArray(report.limits) && report.limits.length >= 2, JSON.stringify(report.limits))
 check('the limits name the checks that need the package contents',
   report.limits.some(limit => limit.includes('slots') && limit.includes('named exports')), report.limits.join('; '))
-check('the limits state that "compatible" is about this screen only',
+check('the limits state that the screen verdict is about metadata only',
   report.limits.some(limit => limit.includes('nothing this screen can check failed')), report.limits.join('; '))
 
 // Rendering: the bulk report reuses the audit's own lines and section headers.
@@ -360,6 +360,16 @@ check('the rendered screen reuses the audit\'s limits header',
 check('the rendered screen ends with the same promise line as the single audit',
   text.trimEnd().endsWith('nothing was installed, nothing was written to the profile, and no lifecycle script was run.'),
   text.split('\n').slice(-1)[0])
+
+// Wording: a screen must not borrow the full audit's strongest word. Fourteen
+// rows of COMPATIBLE once read as "all fourteen are safe to install" when none of
+// them had had its package contents looked at.
+check('a screened row is labelled METADATA-OK, never COMPATIBLE',
+  text.includes('METADATA-OK') && !/→\s+COMPATIBLE/.test(text),
+  text.split('\n').filter(line => line.includes('→')).slice(0, 3).join(' | '))
+check('every screened row states that package contents were not audited',
+  text.includes('package contents not audited'),
+  text.split('\n').filter(line => line.includes('→')).slice(0, 3).join(' | '))
 
 // The single-audit shape must not be mistaken for the screen shape: both carry a
 // `candidates` field, for different things.

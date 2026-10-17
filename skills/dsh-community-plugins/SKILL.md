@@ -85,6 +85,11 @@ dsh_plugin_inspect({ spec: ['pkg-a', 'pkg-b', 'pkg-c'] })    # 预筛多个候�
 
 **`spec` 传数组即为预筛模式（screening mode）**：候选较多时（例如由 topic 检索得到数十个皮肤），先用它收窄候选池，再对通过的包使用单个 `spec` 做完整审计（full audit）。该模式**只读 registry 文档，不下载任何包内容、不解包、不读代码**，因此能判定的仅有三项：声明的 peer 区间、dsh 的版本门禁、manifest 中的 lifecycle 脚本；无法判定的项（bundle patch 文件、slot、具名导出、inject 服务名）在报告的 `limits` 中一次说明，不作猜测。判定与措辞与 `dsh_plugin_audit` 完全同源（同一批函数），两处结论一致。
 
+> ⚠️ **预筛的 verdict 用词是 `METADATA-OK` 而不是 `COMPATIBLE`（0.6.0 起）。** 这不是换名字玩：一次真实会话里 14 个包预筛全部显示 `COMPATIBLE`，被读成「14 个都能装」，而其中 `dsh-codex-effort-slider` 带着一个绕过 `dsh plugin` 的 `install.cmd`、另一个包还需要完整审计才看出问题。`COMPATIBLE` 是完整审计最强的那个词，不该出现在只看元数据的报告里。现在每一行都是
+> `→ METADATA-OK · package contents not audited`——**「没看什么」写在每一行上**，而不是只在报告底部。
+>
+> 判读纪律：`METADATA-OK` 只意味着「本模式能查的项都过了」，**不等于可以安装**。要做安装决定，必须对这个包再跑一次单个 spec 的完整审计。
+
 > ⚠️ **它读取的是 registry 的完整文档，而非 npm 的精简文档。** 此点必须固定：请求头一旦携带 `application/vnd.npm.install-v1+json`，registry 会丢失 `dsh` / `scripts` / `license`（实测字段数 3–6 对 25–28），于是形态一律被读成 `cordis`、license 恒为 null，**且「判定 lifecycle 脚本」这一承诺会静默失效**。
 
 其执行步骤，以及**为何值得在安装前付出这一次网络开销**：
@@ -185,6 +190,28 @@ dsh_plugin_inspect({ spec: ['pkg-a', 'pkg-b', 'pkg-c'] })    # 预筛多个候�
 **流程**：读取仓库 `package.json` 的 `name`（使用 `api.github.com/repos/<owner>/<repo>/contents/package.json` 并 base64 解码）→ 以该名称查询 npm。
 
 monorepo 注意：根 `package.json` 可能无 `name`，或仅是总包；真正的插件包位于子目录（如 `packages/<name>/`）。此时应分别读取各子包的 `package.json`。
+
+### ⚠️ 同名歧义：裸包名可能不是你要的那一个
+
+这个生态还存在比「仓库名≠包名」更危险的一层：**同一个插件概念被多个发布者用同一尾部名称分别发布**。
+
+实测记录（2026-10-17）：`dsh-reasoning-effort` 这一个尾部名称在 registry 上对应 **5 个不同来源**——
+
+| 包名 | 说明 |
+|---|---|
+| `dsh-reasoning-effort` | Mu-scorpio，裸名，审计为 **AT-RISK** |
+| `@hajilongshi/dsh-reasoning-effort` | 另一作者 |
+| `@megen-lebar/dsh-reasoning-effort` | 另一作者，Apache-2.0 |
+| `@x1a0f3n9/dsh-reasoning-effort` | 另一作者，**gate DENIED**（peer 上限 `<0.2.0-0`） |
+| `HanaAyane/dsh-reasoning-effort` | ★227，**未发布 npm**，只存在于 GitHub Release |
+
+若直接 `dsh plugin --profile <name> add dsh-reasoning-effort`，装到的是**裸名那一个（AT-RISK）**，而不是用户想要的 ★227 那个——二者只差一个 scope，界面报错/无效时的表现却几乎一样。
+
+**判据**：
+1. `dsh_plugin_inspect` 自 0.6.0 起会主动报告同名歧义（单包审计与预筛两种模式都有），见报告中的 `! this name has N other publisher(s)` 段；
+2. 该探测**不改变 verdict**——被审计的那个包按自身证据判定，歧义只回答「你选的是不是这一个」；
+3. 裸名与 scope 名的区别必须在命令里写清：`add @scope/name` 才是 scope 那个，`add name` 只认裸名；
+4. **仓库名不是包名**：`HanaAyane/dsh-reasoning-effort` 在 npm 上查不到（404），必须走 Release tarball 或 `github:` 形式（见 §4）。
 
 ### 立场
 
@@ -464,6 +491,38 @@ dsh plugin --profile <name> add <spec>
 
 **monorepo 的 git 安装形式**：`github:<owner>/<repo>#path:/<subdir>`。实测来源（2026-09-30）：`Small-tailqwq/dsh-deep-whale` 含 `skin-manager/`、`maid-atelier/`、`orca-link/` 三个子包，仓库根目录没有 `package.json`，因此 `github:<owner>/<repo>` 形式不可用。同一仓库发布多个包时，须分别安装各子包。
 
+### GitHub Release 预构建 tarball（插件未发布 npm 时）
+
+生态里相当一部分高 star 插件**只发 GitHub Release、不发 npm**。此时有三条路，**它们不等价**：
+
+| 写法 | 拿到的是 | 代价 |
+|---|---|---|
+| `add <npm 包名>` | 发布产物 | 未发布 npm 时不可用；且包名可能与仓库名无关（见上） |
+| `add github:<owner>/<repo>#<ref>` | **源码** | TypeScript 包需 `prepare`/`prepack` 现场构建，慢且可能被 pnpm 的 `allowBuilds` 拦截 |
+| `add <Release 附件 .tgz 直链>` | **构建产物** | 无构建、装完即用；代价是无法核对 registry 的 integrity |
+
+**判断该走哪条**：读仓库 `package.json` 的 `files` 是否已包含 `lib/` 之类的构建产物目录，并看 Releases 页是否有 `.tgz` 附件。有附件优先用附件的直链——本次实测：`dsh-reasoning-effort`（★227）即属此类，用 tarball 直链安装耗时 85 秒、装完 `lib/client.js` 已就绪；若走 `github:` 源码形式则需现场跑 `pnpm run build`。
+
+```powershell
+dsh plugin --profile <name> add https://github.com/<owner>/<repo>/releases/download/<tag>/<pkg>-<version>.tgz
+```
+
+⚠️ **`v` 前缀坑（已修正）**：`#v0.8.1` 这类 ref 曾被工具原样当作版本号（`v0.8.1`），而 npm 路径恒为 `0.8.1`，导致「已安装」判定误报「版本不同」。现在 `resolveGithub()` 会剥掉语义版本形状的前导 `v`（分支名 `v2`、commit sha 均不受影响），并在报告里保留 `requestedRef` 显示你实际 pin 的 ref。
+
+**装完先核对完整性**——tarball 直链没有 registry 的 integrity 兜底，所以要比对字节：
+
+```powershell
+# 1) 安装前：让工具报出 sha256（它会在报告头部打印）
+#    dsh_plugin_inspect({ spec: '<该 tarball 直链>' })
+# 2) 安装后：把落盘文件与审计过的那份比
+$p = "$env:USERPROFILE\.dsh\profiles\<name>\node_modules\<pkg>"
+Get-ChildItem $p -Recurse -File -Include *.js | ForEach-Object {
+  "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
+}
+```
+
+> 若工具报告 `invalid output: value is not lossless JSON`，那是 **0.6.0 之前**的缺陷（github/tarball 路径注入 `undefined` 字段），不是网络问题也不是包的问题——升级本插件即可。
+
 > **`dsh` 不在 PATH 时**（`Get-Command dsh` / `which dsh` 为空，实测常见）：不应照抄某一条路径后逐个尝试，应按下列顺序定位；两种部署形态的命令不同。
 
 **① 打包安装（Windows 上位于 `…\Programs\DeepSeek Harness`）** —— CLI 位于 asar 内，须经应用自带的 shim 启动：
@@ -486,7 +545,13 @@ node "<checkout>/apps/cli/lib/bin.js" plugin --profile <name> add <spec>
 
 ⚠️ 两点实测结论：
 - **只有源码 checkout 可以作为「安装根」供审计工具使用**。纯打包安装没有 `packages/`，`dsh_plugin_audit` 会报告 `dsh install root not found`，并将 API 面检查降级为 `unknown`（它会在 `limits of this run:` 中如实说明）；此时官方包集合仅剩 `profiles/node_modules`，比源码树更少（尤其缺少 client 侧包）——**不应将该降级判定为「插件不兼容」**。
-- 本机为 checkout（`C:\Users\HubaKing\work\deepseek-harness`）与打包应用共存的形态：**CLI 使用 ① 或 ② 均可，而审计工具需要 ② 所指的 checkout**。
+- 本机为 checkout（`C:\Users\HubaKing\work\deepseek-harness`）与打包应用共存的形态：**CLI 使用 ① 或 ② 均可，而审计工具需要 ② 所指的 checkout**。`detectDshRoot()` 会优先选中有 `packages/` 的源码树，实测本机返回的正是 checkout（`sourceTreeAvailable: true`、329 个官方包）。
+
+> **`react` peer 与客户端运行时（0.6.0 起修正）**：官方 client 包把 `react` 声明为 **devDependencies** 而非 peerDependencies——Web 客户端产物自带 React。因此社区 client 插件声明的 `react` peer **在本机任何 host 侧 `node_modules` 里都查不到**，这是**正常形态**。
+>
+> 0.6.0 之前，工具会把它记为 `unknown`，于是**整包 verdict 从 COMPATIBLE 降为 UNKNOWN**——实测一次会话中有 12 个正常插件被这样误降级。现在改为：从 `<dshRoot>/apps/web/node_modules/react`（或 `apps/desktop/`）读取**权威版本**做真比对（本机实测为 `18.3.1`），能读到就判 satisfied/risky，读不到才归入 `structural` 桶——**单独计数、不影响 verdict**，并在 `peers:` 行显示为 `supplied by the Web client (browser-half, not host-resolved)`。
+>
+> 判据不可放宽：`react: ^17` 在 18.3.1 上仍会被正确判为 **at-risk**，不会因为「反正在客户端」而豁免。
 
 **安装完成后先验证，再重启**（重启前即可确认安装是否正确，避免重启后才发现问题）：
 

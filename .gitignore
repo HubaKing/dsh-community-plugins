@@ -26,3 +26,8 @@ Thumbs.db
 # Agent scratch space (session memory, plans, temp scripts)
 .workbuddy/
 .audit/
+
+# Session artifacts: local probe scripts, profile backups, ad-hoc reports.
+# Kept out of the repository on purpose — they describe one machine at one
+# moment (and can contain absolute paths and local package inventories).
+reports/

@@ -647,7 +647,13 @@ function bundlePlugin(overrides = {}, files = {}) {
   check('declared peers are counted even when nothing fails',
     full.declared === 2, JSON.stringify(full))
   check('unsatisfiable peers are counted, never dropped',
-    full.satisfied + full.unsatisfied + full.undecidable === full.declared, JSON.stringify(full))
+    full.satisfied + full.unsatisfied + full.undecidable + full.structural === full.declared, JSON.stringify(full))
+  // `react` is bucketed as structural rather than undecidable: its authority is
+  // the Web client build, so a host-side miss is a fact about where the package
+  // comes from — not doubt about whether the range fits. Folding the two together
+  // is what graded twelve working plugins `unknown` in one session.
+  check('a browser-half peer is bucketed as structural, not undecidable',
+    full.structural === 1 && full.undecidable === 1, JSON.stringify(full))
 }
 
 // ---------------------------------------------------------------------------
