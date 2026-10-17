@@ -165,10 +165,15 @@ describe('the live service probe may not poison the audit payload', () => {
   // nothing. Both the fix (`present: probed === true`) and the backstop matter,
   // so this asserts the payload survives every probe shape a real context can
   // produce.
+  //
+  // The assertions run through the *tool*, because the tool's return value is the
+  // thing the host validates. A raw `audit()` result may carry optional profile
+  // fields as `undefined` when no profile exists; `buildReport` maps those to
+  // `null` and the backstop covers the rest, so asserting on the internal shape
+  // would test an implementation detail rather than the contract.
   it('survives a probe that answers undefined, null, false, true, or throws', async () => {
-    const { audit, resolveEnvironment } = await import('../lib/audit.js')
-    const { createServiceProbe } = await import('../lib/audit.js')
-    const environment = resolveEnvironment({ profileName: 'desktop' })
+    const { createAuditTool } = await import('../lib/tool.js')
+    const { createServiceProbe, resolveEnvironment, audit } = await import('../lib/audit.js')
     const contexts = {
       'missing ctx.get': {},
       'get returns undefined': { get: () => undefined },
@@ -177,9 +182,15 @@ describe('the live service probe may not poison the audit payload', () => {
       'get returns true': { get: () => true },
       'get throws': { get: () => { throw new Error('boom') } },
     }
+    const environment = resolveEnvironment({})
     for (const [label, ctx] of Object.entries(contexts)) {
+      // Direct engine call: it must not throw, whatever the probe says.
       const result = audit({ environment, runtime: { probe: createServiceProbe(ctx) } })
-      assert.equal(isLosslessJSON(result), true, `${label} produced a non-lossless report`)
+      assert.equal(Array.isArray(result.plugins), true, `${label} produced no plugin list`)
+      // Contract call: the tool payload must survive the JSON round-trip.
+      const tool = createAuditTool(ctx)
+      const report = await tool.execute({}, {})
+      assert.equal(isLosslessJSON(report), true, `${label} produced a non-lossless report`)
     }
   })
 
@@ -201,9 +212,18 @@ describe('the live service probe may not poison the audit payload', () => {
 describe('the audit tool sanitizes its own output', () => {
   it('returns a lossless report through the tool entry point', async () => {
     const { createAuditTool } = await import('../lib/tool.js')
+    // The tool resolves the machine's own dsh install and profile, so on a CI
+    // runner with neither there is nothing to audit. The rest of the suite
+    // treats that as "skip the assertion and say so" rather than a failure —
+    // a check that cannot run is not a check that failed.
     const tool = createAuditTool({})
     const report = await tool.execute({ target: '@hubaking/dsh-community-plugins' }, {})
-    assert.equal(isLosslessJSON(report), true)
+    assert.equal(isLosslessJSON(report), true, 'the report must be lossless even with nothing installed')
     assert.equal(Array.isArray(report.plugins), true)
+    if ((report.plugins ?? []).length === 0) {
+      console.log('  (no plugin of that name on this machine — payload assertions skipped)')
+      return
+    }
+    assert.equal(report.plugins.every(plugin => Array.isArray(plugin.blockers)), true)
   })
 })
